@@ -201,8 +201,8 @@ def organize_by_orientation(data_dir="data", output_dir="data_deg"):
 
 
 if __name__ == "__main__":
-    # organize_json_files(data_dir='re2')
-    organize_by_orientation(data_dir="data", output_dir="data_deg")
+    organize_json_files(data_dir='data')
+    # organize_by_orientation(data_dir="data", output_dir="data_deg")
 
 
 

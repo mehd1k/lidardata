@@ -266,23 +266,43 @@ c0 = cell(
 )
 c1 = cell(
     Barrier=[
-        [m1,m12],
+        [m1,m10],
         [m10, m11],
-        [m11, m12]
+        [m1, m12]
     ],
-    exit_Vertices=[m1, m12],
+    exit_Vertices=[m11, m12],
     vrt=[m10, m11, m12, m1]
 )
-cell_ls = [c0]
+c2 = cell(
+    Barrier=[
+        [m12,m11],
+        [m12, p2],
+        [p2, m3]
+    ],
+    exit_Vertices=[m3, m11],
+    vrt=[m3, m11, m12, p2]
+)
+c3 = cell(
+    Barrier=[
+        [m11,m3],
+        [m3, p1],
+        [p1, m2]
+    ],
+    exit_Vertices=[m11, m2],
+    vrt=[m11, m3, p1, m2]
+)
+cell_ls = [c0, c1, c2, c3]
 if __name__ == "__main__":
     fig, ax = plt.subplots()
     ax.set_aspect('equal')
     # c_Lshape0.plot_cell(ax)
     c_Lshape.plot_cell(ax)
-    # plot_m_points(ax)
+    plot_m_points(ax)
     c0.plot_cell(ax)
     # print('xmin', c0.x_min, 'xmax', c0.x_max, 'ymin', c0.y_min, 'ymax', c0.y_max)
-    c1.plot_cell(ax)
-    # c2.plot_cell(ax)
-    plot_data_points('data_deg/deg90', ax)
+    # c1.plot_cell(ax)
+    c2.plot_cell(ax)
+    c3.plot_cell(ax)
+    plot_data_points('/home/mehdi/lidardata/cells_kernels/c0/deg90', ax)
+    # plot_data_points('data_deg/deg90', ax)
     plt.show()

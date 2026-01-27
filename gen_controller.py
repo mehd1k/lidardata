@@ -34,68 +34,6 @@ def vectorize_matrix(P):
 
 
 
-
-class observation():
-    def __init__(self, landmark_position, sigma_max, epsilon, grid_size, dimensions):
-        self.xl = landmark_position
-        self.sm = sigma_max
-        self.eps = epsilon
-        
-        
-        
-        self.dy = dimensions[1]
-        self.dx = dimensions[0]
-        self.nx = grid_size[0]
-        self.ny = grid_size[1]
-        
-    def obs(self, x_robot):
-        # self.Po = np.zeros(self.ny,self.nx)
-        Po = np.zeros((self.ny,self.nx))
-        dis_rel = -self.xl+x_robot
-        
-        ix = int(np.round ( (dis_rel[0])/(self.dx)*(self.nx-1)))
-        iy =  int( np.round ((dis_rel[1])/(self.dy)*(self.ny-1)))
-       
-        Po[iy,ix] = 1
-        Po = np.flip(Po, axis=0)
-        return Po
-    def guass(self, x):
-        Po = np.zeros((self.ny,self.nx))
-        dis_rel = self.xl-x
-        mu_x = dis_rel[0][0]
-        mu_y =  dis_rel[1][0]
-        flag_sign = np.random.randint(1,2)
-        mean = np.array([mu_x,mu_y])
-        if flag_sign == 1:
-            mean = mean + self.eps
-        else:
-            mean = mean- self.eps
-    
-        # mean = mean[0]
-        for iy in range(self.ny):
-            for ix in range(self.ny):
-                x_g = ix*2*self.dx/(self.nx-1)-self.dx
-                y_g = self.dy -iy*2*self.dy/(self.ny-1)
-                Po[iy,ix] = np.exp(-1/(2*self.sm)*( (x_g-mean[0])**2+(y_g-mean[1])**2))
-
-        Po = Po/np.sum(Po)
-        
-        # lims = (-self.dx, self.dx) # support of the PDF
-        # xx, yy = np.meshgrid(np.linspace(*lims, self.nx), np.linspace(*lims, self.nx))
-        # points = np.stack((xx, yy), axis=-1)
-        # flag_sign = np.random.randint(1,2)
-        
-        # if flag_sign == 1:
-        #     # mean = np.array([iy,ix]) + self.eps*np.random.random((1,2))*self.nx/self.dx
-        # else:
-        #     mean = np.array([iy,ix])- self.eps*np.random.random((1,2))*self.nx/self.dx
-        
-        # plt.imshow(pdf)
-        # plt.show()
-        return Po
-    def just_mean(self, x):
-        return self.xl-x
-
        
 
 class Discrertized_Linear_Controller():
@@ -204,69 +142,19 @@ class Control_cal():
         self.l = np.array([[self.xmin], [self.ymin]])
         self.Ax, self.bx = self.get_Axbx()
         
-        self.tx, self.ty = self.get_theta()
+        
         
         self.AH,  self.bH = self.get_Ahbh()
 
-        self.obs = observation(self.l, self.eps, self.sigma_max, self.gs, self.d)
+      
 
         self.v = self.get_v()
         self.grid = []
         self.con_lim = con_lim
         self.directory_save =directory_save
   
-        # Build a position-to-file mapping for exact lookups
-        # This allows us to get the exact file for a queried position when available
-        # Store both exact positions and rounded positions for flexible matching
-        self.position_to_file = {}
-        self.position_to_file_exact = {}
-        if os.path.exists(directory_mat):
-            for filename in os.listdir(directory_mat):
-                if filename.endswith('.npy'):
-                    name_parts = filename.split('_')
-                    x_str = name_parts[1].replace('nr', '')
-                    y_str = name_parts[2].replace('y', '')
-                    x = float(x_str)
-                    y = float(y_str)
-                    file_path = os.path.join(directory_mat, filename)
-                    file_data = np.load(file_path).flatten()
-                    # Store with exact position
-                    self.position_to_file_exact[(x, y)] = file_data
-                    # Also store with rounded position for matching JSON positions
-                    pos_key = (round(x, 10), round(y, 10))
-                    self.position_to_file[pos_key] = file_data
-        
-       
-        
-        
-        n =100
-        A = np.random.randn(100, 100)
-        # Perform QR decomposition
-        Q, R = np.linalg.qr(A)
-        self.kernel = Q
-        # self.lidar_mode = True
-        if self.measurement_mode == 'vae':
-            # Load VAE model for lidar scan processing
-            vae_model_path = 'lidar_vae_model.pth'  # Path to saved VAE model
-            if os.path.exists(vae_model_path) and TORCH_AVAILABLE:
-                try:
-                    self.VAE, self.vae_data_min, self.vae_data_max = load_vae_model(
-                        model_path=vae_model_path,
-                        device='cpu'  # Use CPU by default, change to 'cuda' if GPU available
-                    )
-                    self.vae_device = next(self.VAE.parameters()).device
-                    print(f"VAE model loaded successfully for cell controller")
-                except Exception as e:
-                    print(f"Warning: Failed to load VAE model: {e}")
-                    self.VAE = None
-            else:
-                print(f"Warning: VAE model file not found at {vae_model_path} or PyTorch not available")
-                self.VAE = None
-    
-
-
-
-        self.kernel = self.load_mat_files2(directory_mat)
+        self.kernel, self.x_ls, self.y_ls = self.load_mat_files2(directory_mat)
+        self._get_theta()
         self.kernel_ls = [self.kernel]
       
         # self.kernel_ls =  [np.log(np.abs(self.kernel)+1)/np.max(np.abs(self.kernel)), np.sin(self.kernel)]
@@ -277,8 +165,10 @@ class Control_cal():
                 return
         
 
-            grid_data = {}
-
+       
+            data_ls = []
+            x_ls = []
+            y_ls = []
             # Iterate through the directory and process each .mat file
             for filename in os.listdir(directory):
                 if filename.endswith('.json'):
@@ -301,77 +191,37 @@ class Control_cal():
                
                     # 
                     # Store the data in a dictionary with keys as (x, y) tuples
-                    grid_data[(x, y)] = measurement
-
+                    
+                    x_ls.append(x)
+                    y_ls.append(y)
+                    data_ls.append(measurement)
             # Extract grid parameters from the coordinate values
-            x_coords = sorted(set([coord[0] for coord in grid_data.keys()]))
-            y_coords = sorted(set([coord[1] for coord in grid_data.keys()]))
+            # x_coords = sorted(set([coord[0] for coord in grid_data.keys()]))
+            # y_coords = sorted(set([coord[1] for coord in grid_data.keys()]))
             
-            nx = len(x_coords)
-            ny = len(y_coords)
-            print('nx, ny = ', nx, ny)  
+            n_data = len(data_ls)
+            print('n_data = ', n_data)  
             # Initialize output kernel matrix (100 neurons x nx*ny grid positions)
-            output = np.zeros([len(measurement), nx * ny])
+            # output = np.zeros([len(measurement), n_data])
             
             # Build kernel by placing each file in the column it maps to
             # Process files in sorted order (by y, then x) so that later files overwrite earlier ones
             # This ensures deterministic behavior when multiple files map to the same column
-            col_best_match = {}  # col_idx -> measurement
-            
-            # Sort grid_data items to ensure consistent processing order
-            # Sort by y first (ascending), then x (ascending) to match file naming convention
-            sorted_items = sorted(grid_data.items(), key=lambda item: (item[0][1], item[0][0]))
-            mis_ls = []
-        
-            for (x, y), measurement in sorted_items:
-                pos = np.array([[x],[y]])
-                Po = self.obs.obs(pos)
-                Po_vec = vectorize_matrix(Po)
-                idx = np.argmax(Po_vec)
-                
-                output[:, idx] = measurement.copy()
-                if x == 0.16 and y == 0.79:
-                    self.nr_i = measurement
-                    self.idx_i = idx
-            
-                
-            output = np.array(output)
-            print('kernel rank', np.linalg.matrix_rank(output))
+           
 
-            return output
+            return np.array(data_ls).T, np.array(x_ls), np.array(y_ls)
 
     
-    def get_theta(self):
+    def _get_theta(self):
        
-        # nx,ny = self.nx, self.ny
-        # nx,ny = self.gs[0],self.gs[1]
-
-        nx, ny = self.nx, self.ny
-        dx= self.d[0]
-        dy= self.d[1]
-    
         
-        self.tx = np.zeros((ny,nx))
-        self.ty = np.zeros((ny,nx))
-        for ix in range(nx):
-            
-                self.ty[:, ix] = np.linspace(self.ymin,self.ymax,ny)
 
       
-        for iy in range(ny):
-            self.tx[iy, :] = np.linspace(self.xmin,self.xmax,nx)
-               
-
-        txT = vectorize_matrix(self.tx)
-        txT = np.reshape(txT, [1,-1])
-
-        tyT = vectorize_matrix(self.ty)
-        tyT = np.reshape(tyT, [1,-1])
-        self.txT = txT
-        self.tyT = tyT
-        self.U = np.array([self.txT[0],np.flip(self.tyT[0], axis=0)])
+      
         
-        szp = int(nx*ny)
+        self.U = np.array([self.x_ls,self.y_ls])
+        
+        szp = int(len(self.x_ls))
         ### Making Ap
         self.Ap = np.zeros((4,szp))
         
@@ -381,7 +231,7 @@ class Control_cal():
         ### Making bp
         self.bp = np.array([ [-self.eps], [-self.eps], [-self.eps], [-self.eps]] )
         self.Ax2 = np.array([ [-1,0],[0,-1], [1,0], [0,1]])
-        return self.tx,self.ty
+       
 
     def check_Probability_constraints(self,x_pos, y_pos):
         pos = np.array([[x_pos],[y_pos]])
@@ -464,17 +314,11 @@ class Control_cal():
        
         return np.array(Ah),np.reshape(np.array(bH),(-1,1))
     
-    def u(self, P_vec):
+    def u(self, measurement):
         # u = self.K@self.kernel@P_vec+self.Kb
-        u = 0
-        for i in range(len(self.kernel_ls)):
-            u += self.K[i]@self.kernel_ls[i]@P_vec
+        u = self.K@measurement
+        u = u.reshape([2,1])
         u += self.Kb
-        # con_lim = self.con_lim
-        # if np.abs(u[0])>con_lim:
-        #     u[0] = con_lim*u[0]/np.abs(u[0])
-        # if np.abs(u[1])>con_lim:
-        #     u[1] = con_lim*u[1]/np.abs(u[1])
         return u
     
 
@@ -567,37 +411,28 @@ class Control_cal():
    
     def vector_F(self):
 
-        obs = observation(self.l, self.eps, self.sigma_max, self.gs, self.d)
+       
         # obs = obs = observation(self.l, self.eps, self.sigma_max, [10,10], self.d)
         CD = Discrertized_Linear_Controller(self.A, self.B, self.dt)
         A_dis, B_dis = CD()
-        X  = np.linspace(self.xmin,self.xmax,10)
-        Y = np.linspace(self.ymin,self.ymax,10)
+       
         ux_ls = []
         uy_ls = []
-        
-        xg =[]
-        yg =[]
         # self.cpox = np.zeros((len(Y),len(X)))
         # self.cpoy = np.zeros((len(Y),len(X)))
-        for iy in range(len(Y)):
-            for ix in range(len(X)):
-           
-                x =X[ix]
-                y = Y[iy]
-                x_old = np.array([[x],[y]])
-                # if all(self.Ax@x_old+self.bx <0):
+        for i_data in range(len(self.y_ls)):
             
-                Po = vectorize_matrix(obs.obs(x_old))
+    
+                
                 # Po = obs.obs(x_old).T.flatten().reshape([-1,1])
-                u =self.u(Po)
+                u =self.u(self.kernel_ls[0][:,i_data])
                 uc = np.copy(u)/np.linalg.norm(u)
             
                 
                 ux_ls.append(uc[0]) 
                 uy_ls.append(uc[1])
-                xg.append(x)
-                yg.append(y)
+             
+               
             
         fig, ax = plt.subplots()        
         for i in range(len(self.vrt)-1):
@@ -610,7 +445,7 @@ class Control_cal():
         sc =1
         ux_ls = sc*np.array(ux_ls)
         uy_ls = sc* np.array(uy_ls)
-        ax.quiver(xg,yg,ux_ls,uy_ls,angles='xy', scale_units='xy')
+        ax.quiver(self.x_ls,self.y_ls,ux_ls,uy_ls,angles='xy', scale_units='xy')
         # print('u_min', np.min(np.abs(ux_ls)), np.min(np.abs(uy_ls)))
         # np.save('ux_ls.npy',ux_ls)
         # np.save('uy_ls.npy',uy_ls)
@@ -770,9 +605,9 @@ class Control_cal():
         wh = 155
         wv =1.21
         print('wh', wh)
-        nx,ny = self.gs[0],self.gs[1]
+        # nx,ny = self.gs[0],self.gs[1]
         
-        szp = int(nx*ny)
+        szp = int(len(self.x_ls))
         
         szv = len(self.vrt)
        
@@ -1116,7 +951,7 @@ def gen_controller_all_orinetation(cell_i, directory_mat, directory_save, ch , c
     # # plt.imshow(np.sum(rate_maps_cell, axis= 0))
     # # plt.colorbar()
     # # plt.show()
-    for deg in range(0, 360, 10):
+    for deg in range(0, 360, 90):
             # A = np.zeros((2,2))
         A = np.zeros((2,2))
         # A = np.ones((2,2))*0.1
@@ -1152,7 +987,7 @@ if __name__ == '__main__':
     A = np.zeros((2,2))
     B = np.eye((2))
     measurement_mode = 'neural_lidar'
-    i_cell = 1
+    i_cell = 0
     directory_mat = 'cells_kernels/c'+str(i_cell)+'/deg'
     # directory_save =  'cells_controllers/c'+str(i_cell)+'/deg'
     if measurement_mode == 'vae':
