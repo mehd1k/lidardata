@@ -438,109 +438,109 @@ def generate_occupancy_grid(json_file, grid_size=10, front_angle_range=(-np.pi/3
     return occupancy_grid, bounds
 
 
-    def generate_occupancy_grid_polar(json_file, num_angle_bins=120, num_range_bins=40):
-        """
-        Generate an occupancy grid in polar coordinates based on lidar scan data.
+def generate_occupancy_grid_polar(json_file, num_angle_bins=120, num_range_bins=40):
+    """
+    Generate an occupancy grid in polar coordinates based on lidar scan data.
+    
+    Args:
+        json_file: Path to JSON file containing lidar scan data
+        num_angle_bins: Number of angle bins (default: 120, corresponding to 3-degree increments)
+        num_range_bins: Number of range bins (default: 40)
+    
+    Returns:
+        occupancy_grid: 2D numpy array of shape (num_range_bins, num_angle_bins) with values:
+            - 1.0: occupied cell (contains obstacles)
+            - 0.0: free cell (along ray path, no obstacles)
+            - 0.5: unknown cell (not explored)
+        polar_params: Dictionary with 'angle_min', 'angle_max', 'angle_increment', 
+                     'range_min', 'range_max', 'range_increment' defining the grid parameters
+    """
+    # Load data
+    data = load_lidar_data(json_file)
+    # lidar_scan = data['lidar_scan']
+    
+    # Extract lidar parameters
+    ranges = np.array(data['lidar_scan_ranges'])
+    angle_min = data['lidar_scan_angle_min']
+    angle_max = data['lidar_scan_angle_max']
+    angle_increment = data['lidar_scan_angle_increment']
+    range_min = 0
+    range_max = 5
+    
+    # Generate angles for lidar data
+    num_points = len(ranges)
+    if angle_increment > 0:
+        angles = np.arange(angle_min, angle_min + num_points * angle_increment, angle_increment)
+        angles = angles[:num_points]
+    else:
+        angles = np.linspace(angle_min, angle_max, num_points)
+    
+    # Filter out invalid ranges
+    valid_mask = np.isfinite(ranges) & (ranges >= range_min) & (ranges <= range_max)
+    ranges_valid = ranges[valid_mask]
+    angles_valid = angles[valid_mask]
+    
+    # Define polar grid parameters
+    # Angle bins: 120 bins with 3-degree increments covering full 360 degrees
+    angle_bin_increment = 3.0 * np.pi / 180.0  # 3 degrees in radians
+    angle_grid_min = 0.0  # Start from 0 radians (East)
+    angle_grid_max = num_angle_bins * angle_bin_increment  # Full circle
+    
+    # Range bins: 40 bins from range_min to range_max
+    range_increment = (range_max - range_min) / num_range_bins
+    
+    # Initialize occupancy grid (0.5 = unknown)
+    occupancy_grid = np.full((num_range_bins, num_angle_bins), 0.0, dtype=np.float32)
+    
+    # Function to convert (angle, range) to grid indices
+    def polar_to_grid(angle, range_val):
+        """Convert polar coordinates to grid indices."""
+        # Normalize angle to [0, 2π) range
+        angle_norm = angle % (2 * np.pi)
+        if angle_norm < 0:
+            angle_norm += 2 * np.pi
         
-        Args:
-            json_file: Path to JSON file containing lidar scan data
-            num_angle_bins: Number of angle bins (default: 120, corresponding to 3-degree increments)
-            num_range_bins: Number of range bins (default: 40)
+        # Find angle bin index
+        angle_bin = int(angle_norm / angle_bin_increment)
+        angle_bin = np.clip(angle_bin, 0, num_angle_bins - 1)
         
-        Returns:
-            occupancy_grid: 2D numpy array of shape (num_range_bins, num_angle_bins) with values:
-                - 1.0: occupied cell (contains obstacles)
-                - 0.0: free cell (along ray path, no obstacles)
-                - 0.5: unknown cell (not explored)
-            polar_params: Dictionary with 'angle_min', 'angle_max', 'angle_increment', 
-                        'range_min', 'range_max', 'range_increment' defining the grid parameters
-        """
-        # Load data
-        data = load_lidar_data(json_file)
-        # lidar_scan = data['lidar_scan']
+        # Find range bin index
+        range_bin = int((range_val - range_min) / range_increment)
+        range_bin = np.clip(range_bin, 0, num_range_bins - 1)
         
-        # Extract lidar parameters
-        ranges = np.array(data['lidar_scan_ranges'])
-        angle_min = data['lidar_scan_angle_min']
-        angle_max = data['lidar_scan_angle_max']
-        angle_increment = data['lidar_scan_angle_increment']
-        range_min = 0
-        range_max = 5
-        
-        # Generate angles for lidar data
-        num_points = len(ranges)
-        if angle_increment > 0:
-            angles = np.arange(angle_min, angle_min + num_points * angle_increment, angle_increment)
-            angles = angles[:num_points]
-        else:
-            angles = np.linspace(angle_min, angle_max, num_points)
-        
-        # Filter out invalid ranges
-        valid_mask = np.isfinite(ranges) & (ranges >= range_min) & (ranges <= range_max)
-        ranges_valid = ranges[valid_mask]
-        angles_valid = angles[valid_mask]
-        
-        # Define polar grid parameters
-        # Angle bins: 120 bins with 3-degree increments covering full 360 degrees
-        angle_bin_increment = 3.0 * np.pi / 180.0  # 3 degrees in radians
-        angle_grid_min = 0.0  # Start from 0 radians (East)
-        angle_grid_max = num_angle_bins * angle_bin_increment  # Full circle
-        
-        # Range bins: 40 bins from range_min to range_max
-        range_increment = (range_max - range_min) / num_range_bins
-        
-        # Initialize occupancy grid (0.5 = unknown)
-        occupancy_grid = np.full((num_range_bins, num_angle_bins), 0.0, dtype=np.float32)
-        
-        # Function to convert (angle, range) to grid indices
-        def polar_to_grid(angle, range_val):
-            """Convert polar coordinates to grid indices."""
-            # Normalize angle to [0, 2π) range
-            angle_norm = angle % (2 * np.pi)
-            if angle_norm < 0:
-                angle_norm += 2 * np.pi
+        return range_bin, angle_bin
+    
+    # Mark occupied cells (cells containing obstacle endpoints)
+    for angle, range_val in zip(angles_valid, ranges_valid):
+        range_bin, angle_bin = polar_to_grid(angle, range_val)
+        occupancy_grid[range_bin, angle_bin] = 1.0  # Occupied
+    
+    # Mark free cells (cells along ray path from robot to obstacle)
+    for angle, range_val in zip(angles_valid, ranges_valid):
+        if range_val > 0:
+            # Get grid position of obstacle
+            end_range_bin, end_angle_bin = polar_to_grid(angle, range_val)
             
-            # Find angle bin index
-            angle_bin = int(angle_norm / angle_bin_increment)
-            angle_bin = np.clip(angle_bin, 0, num_angle_bins - 1)
-            
-            # Find range bin index
-            range_bin = int((range_val - range_min) / range_increment)
-            range_bin = np.clip(range_bin, 0, num_range_bins - 1)
-            
-            return range_bin, angle_bin
-        
-        # Mark occupied cells (cells containing obstacle endpoints)
-        for angle, range_val in zip(angles_valid, ranges_valid):
-            range_bin, angle_bin = polar_to_grid(angle, range_val)
-            occupancy_grid[range_bin, angle_bin] = 1.0  # Occupied
-        
-        # Mark free cells (cells along ray path from robot to obstacle)
-        for angle, range_val in zip(angles_valid, ranges_valid):
-            if range_val > 0:
-                # Get grid position of obstacle
-                end_range_bin, end_angle_bin = polar_to_grid(angle, range_val)
-                
-                # Mark all range bins from 0 to obstacle as free
-                # (except the obstacle cell itself which is already marked as occupied)
-                for r_bin in range(end_range_bin):
-                    # Keep obstacle cells as occupied, mark others as free
-                    if occupancy_grid[r_bin, end_angle_bin] != 1.0:
-                        occupancy_grid[r_bin, end_angle_bin] = 0.0  # Free
-        
-        # Store polar parameters for reference
-        polar_params = {
-            'angle_min': angle_grid_min,
-            'angle_max': angle_grid_max,
-            'angle_increment': angle_bin_increment,
-            'num_angle_bins': num_angle_bins,
-            'range_min': range_min,
-            'range_max': range_max,
-            'range_increment': range_increment,
-            'num_range_bins': num_range_bins
-        }
-        
-        return occupancy_grid, polar_params
+            # Mark all range bins from 0 to obstacle as free
+            # (except the obstacle cell itself which is already marked as occupied)
+            for r_bin in range(end_range_bin):
+                # Keep obstacle cells as occupied, mark others as free
+                if occupancy_grid[r_bin, end_angle_bin] != 1.0:
+                    occupancy_grid[r_bin, end_angle_bin] = 0.0  # Free
+    
+    # Store polar parameters for reference
+    polar_params = {
+        'angle_min': angle_grid_min,
+        'angle_max': angle_grid_max,
+        'angle_increment': angle_bin_increment,
+        'num_angle_bins': num_angle_bins,
+        'range_min': range_min,
+        'range_max': range_max,
+        'range_increment': range_increment,
+        'num_range_bins': num_range_bins
+    }
+    
+    return occupancy_grid, polar_params
 
 
 def visualize_occupancy_grid_polar(occupancy_grid, polar_params=None, figsize=(12, 10), show_as_image=False):

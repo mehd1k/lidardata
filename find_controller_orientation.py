@@ -63,20 +63,52 @@ class control_gain_load():
         Returns:
             np.ndarray: The interpolated matrix.
         """
-        # Find the two closest degrees
+        # Find the two closest degree
+        # Normalize orientation to [0, 360) range
+        orientation = orientation % 360
         
-        lower_degree = int(np.floor(orientation / 10) * 10)  # The degree lower or equal to the orientation
-        upper_degree = int(np.ceil(orientation / 10) * 10)  # The degree higher or equal to the orientation
+        orientation_list_folder = list(np.arange(0, 360, 90))
+    
+        # Find the two orientations that bracket the target orientation
+        lower_degree = None
+        upper_degree = None
         
-        if upper_degree > 350:
-            upper_degree = 350  # Cap at 350
-        
-        if lower_degree < 0:
-            lower_degree = 0  # Cap at 0
+        # Check if orientation exactly matches a value in the list
+        if orientation in orientation_list_folder:
+            idx = orientation_list_folder.index(orientation)
+            # Use the exact match and the next value
+            lower_degree = orientation_list_folder[idx]
+            if idx < len(orientation_list_folder) - 1:
+                upper_degree = orientation_list_folder[idx + 1]
+            else:
+                # Wrap around: last value wraps to 0 (360)
+                upper_degree = 360
+        else:
+            # Find the two values that bracket the orientation
+            for i in range(len(orientation_list_folder)):
+                if orientation_list_folder[i] > orientation:
+                    # Found the upper bound
+                    upper_degree = orientation_list_folder[i]
+                    # Lower bound is the previous element
+                    if i > 0:
+                        lower_degree = orientation_list_folder[i - 1]
+                    else:
+                        # Wrap around: lower is the last element (270), upper is 0 (which becomes 360)
+                        lower_degree = orientation_list_folder[-1]
+                        upper_degree = 360  # For interpolation, treat 0 as 360
+                    break
+            
+            # Handle case where orientation is >= last value in list (wrap-around case)
+            if lower_degree is None or upper_degree is None:
+                # Orientation is between last value and 360 (which wraps to 0)
+                lower_degree = orientation_list_folder[-1]  # 270
+                upper_degree = 360  # For interpolation purposes
         
         # Load matrices from the two closest folders
+        # Handle wrap-around: if upper_degree is 360, use deg0 folder
+        upper_degree_for_folder = 0 if upper_degree == 360 else upper_degree
         lower_folder = os.path.join(self.dir_control_gains,'c'+str(cell_number),f'deg{lower_degree}')
-        upper_folder = os.path.join(self.dir_control_gains,'c'+str(cell_number), f'deg{upper_degree}')
+        upper_folder = os.path.join(self.dir_control_gains,'c'+str(cell_number), f'deg{upper_degree_for_folder}')
         
         K1,Kb1 = self.load_matrix_from_folder(lower_folder)
         K2,Kb2 = self.load_matrix_from_folder(upper_folder)

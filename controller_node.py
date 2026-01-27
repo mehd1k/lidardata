@@ -64,7 +64,7 @@ def generate_occupancy_grid_polar(scan_data, num_angle_bins=120, num_range_bins=
     
     # Range bins: 40 bins from range_min to range_max
     # range_increment = (range_max - range_min) / num_range_bins
-    range_increment = 1.2 / num_range_bins
+    range_increment = (5 - 0) / num_range_bins
     
     # Initialize occupancy grid (0.5 = unknown)
     occupancy_grid = np.full((num_range_bins, num_angle_bins), 0.0, dtype=np.float32)
@@ -116,10 +116,10 @@ def generate_occupancy_grid_polar(scan_data, num_angle_bins=120, num_range_bins=
         'range_increment': range_increment,
         'num_range_bins': num_range_bins
     }
-    fig, ax = visualize_occupancy_grid_polar(occupancy_grid, polar_params)
-    fig.savefig('occupancy_grid_polar.png')
-    print('occupancy_grid_polar.png saved')
-    plt.close(fig)
+    # fig, ax = visualize_occupancy_grid_polar(occupancy_grid, polar_params)
+    # fig.savefig('occupancy_grid_polar.png')
+    # print('occupancy_grid_polar.png saved')
+    # plt.close(fig)
     return occupancy_grid, polar_params
 
 def load_RSC_data():
@@ -136,7 +136,7 @@ if USE_ROS2:
     import rclpy
     from rclpy.node import Node
     from sensor_msgs.msg import LaserScan
-    from geometry_msgs.msg import PoseStamped
+    from geometry_msgs.msg import PoseStamped, Twist
 
     class ScanPoseSubscriber(Node):
         """Subscribes to /scan and /vrpn_client_node/jackal/pose (ROS2)."""
@@ -147,17 +147,23 @@ if USE_ROS2:
             self._latest_pose = None
             self._position = (0.0, 0.0, 0.0)
             self._orientation_yaw = 0.0
-
+            self.pos_ls = []
+            self.control_ls = []
             self._scan_sub = self.create_subscription(
                 LaserScan, "/scan", self._scan_cb, 10,
             )
             self._pose_sub = self.create_subscription(
                 PoseStamped, "/vrpn_client_node/jackal/pose", self._pose_cb, 10,
             )
+            self._control_pub = self.create_publisher(
+                Twist, "/controller_output", 10
+            )
             self.get_logger().info("Subscribed to /scan and /vrpn_client_node/jackal/pose")
+            self.get_logger().info("Publishing controller output to /controller_output")
             self.cell_ls = cell_ls
             self.control_gain_load = control_gain_load()
             self.RSC_data = load_RSC_data()
+            self.current_grid_occ = None
 
         def _find_cell(self, position):
             """Find which cell the robot is currently in"""
@@ -172,7 +178,12 @@ if USE_ROS2:
             return cell_indices[0]
 
         def controller(self):
-            K, Kb = self.control_gain_load.interpolate_contorlgains(self.current_cell, self._orientation_yaw)       
+            if self.current_cell is None:
+                return np.zeros((2,1))
+            #check if the current_grid_occ exits
+            if self.current_grid_occ is None:
+                return np.zeros((2,1))
+            K, Kb = self.control_gain_load.interpolate_contorlgains(self.current_cell, self._orientation_degree)       
             measurement = []
             for i in range(len(self.RSC_data)):
                 measurement.append(np.sum(self.RSC_data[i]*self.current_grid_occ.T))
@@ -194,7 +205,27 @@ if USE_ROS2:
         def _scan_cb(self, msg):
             self.lidar_scan = msg
             self.current_grid_occ, self.polar_params = generate_occupancy_grid_polar(self.lidar_scan)
+            self.get_logger().info( "received scan", throttle_duration_sec=1.0)
+            u = self.controller()
+            self.get_logger().info(
+                "control : (%.3f, %.3f)" % (u[0], u[1]),
+                throttle_duration_sec=1.0,
+            )
+            self.publish_control(u)
+            self.pos_ls.append(self._position)
+            self.control_ls.append(u)
+            np.save('pos_ls.npy', self.pos_ls)
+            np.save('control_ls.npy', self.control_ls)
 
+        def publish_control(self, u):
+            twist_msg = Twist()
+            twist_msg.linear.x = float(u[0])
+            twist_msg.linear.y = float(u[1])
+            twist_msg.linear.z = 0.0
+            twist_msg.angular.x = 0.0
+            twist_msg.angular.y = 0.0
+            twist_msg.angular.z = 0.0
+            self._control_pub.publish(twist_msg)
 
         def _pose_cb(self, msg):
             self._latest_pose = msg
@@ -202,15 +233,32 @@ if USE_ROS2:
             q = msg.pose.orientation
             self._position = (p.x, p.y)
             self._orientation_yaw = quaternion_to_yaw(q)
+            self._orientation_degree = self._orientation_yaw * 180 / np.pi % 360
             self.get_logger().info(
                 "pose: x=%.3f y=%.3f yaw=%.3f rad" % (p.x, p.y, self._orientation_yaw),
                 throttle_duration_sec=1.0,
             )
-            # self.current_cell = self._find_cell(self._position)
-            # self.get_logger().info(
-            #     "current cell: %d" % self.current_cell,
-            #     throttle_duration_sec=1.0,
-            # )
+            self.current_cell = self._find_cell(self._position)
+           
+            # Publish controller output
+            # twist_msg = Twist()
+            # twist_msg.linear.x = float(u[0])
+            # twist_msg.linear.y = float(u[1])
+            # twist_msg.linear.z = 0.0
+            # twist_msg.angular.x = 0.0
+            # twist_msg.angular.y = 0.0
+            # twist_msg.angular.z = 0.0
+            # self._control_pub.publish(twist_msg)
+            if self.current_cell is not None:
+                self.get_logger().info(
+                    "current cell: %d" % (self.current_cell),
+                    throttle_duration_sec=1.0,
+                )
+            else:
+                self.get_logger().info(
+                    "current cell: None",
+                    throttle_duration_sec=1.0,
+                )
 
         @property
         def latest_scan(self):
@@ -231,7 +279,7 @@ if USE_ROS2:
 else:
     import rospy
     from sensor_msgs.msg import LaserScan
-    from geometry_msgs.msg import PoseStamped
+    from geometry_msgs.msg import PoseStamped, Twist
 
     class ScanPoseSubscriber:
         """Subscribes to /scan and /vrpn_client_node/jackal/pose (ROS1)."""
@@ -246,7 +294,9 @@ else:
             self._pose_sub = rospy.Subscriber(
                 "/vrpn_client_node/jackal/pose", PoseStamped, self._pose_cb
             )
+            self._control_pub = rospy.Publisher("/controller_output", Twist, queue_size=10)
             rospy.loginfo("Subscribed to /scan and /vrpn_client_node/jackal/pose")
+            rospy.loginfo("Publishing controller output to /controller_output")
 
         def _scan_cb(self, msg):
             self._latest_scan = msg

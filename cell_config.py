@@ -21,21 +21,22 @@ class cell ():
             ax.plot([wall[0][0], wall[1][0]], [wall[0][1], wall[1][1]], color = 'red')
         if len(self.exit_vrt) > 0:
             ax.plot([self.exit_vrt[0][0], self.exit_vrt[1][0]], [self.exit_vrt[0][1], self.exit_vrt[1][1]], color = 'green')
-    # def check_in_polygon(self, p):
-    #         """
-    #     Test if points in `p` are in `hull`
+    def check_in_polygon(self, p):
+            """
+        Test if points in `p` are in `hull`
 
-    #     `p` should be a `NxK` coordinates of `N` points in `K` dimensions
-    #     `hull` is either a scipy.spatial.Delaunay object or the `MxK` array of the
-    #     coordinates of `M` points in `K`dimensions for which Delaunay triangulation
-    #     will be computed
-    #     """
-    #         p = np.reshape(p,(1,2))
+        `p` should be a `NxK` coordinates of `N` points in `K` dimensions
+        `hull` is either a scipy.spatial.Delaunay object or the `MxK` array of the
+        coordinates of `M` points in `K`dimensions for which Delaunay triangulation
+        will be computed
+        """
+            from scipy.spatial import Delaunay
+            p = np.reshape(p,(1,2))
             
-    #         if not isinstance(self.vrt,Delaunay):
-    #             hull = Delaunay(self.vrt)
+            if not isinstance(self.vrt,Delaunay):
+                hull = Delaunay(self.vrt)
 
-    #         return (hull.find_simplex(p)>=0)[0]
+            return (hull.find_simplex(p)>=0)[0]
         
 
 
@@ -210,6 +211,285 @@ def plot_data_points(directory, ax, color='blue', marker='o', markersize=3, alph
         print(f"  (Skipped {invalid_count} files with invalid data)")
 
 
+def plot_pose_from_bag(bag_path, topic_name='/vrpn_client_node/jackal/pose', ax=None, 
+                        color='red', marker='o', markersize=2, alpha=0.6, label=None):
+    """
+    Extract and plot pose points from a ROS2 bag file.
+    
+    Parameters:
+    bag_path: Path to the ROS2 bag directory (containing .db3 file) or direct path to .db3 file
+    topic_name: Name of the topic to read from (default: '/vrpn_client_node/jackal/pose')
+    ax: matplotlib axes object to plot on (if None, creates a new figure)
+    color: Color for the data points (default: 'red')
+    marker: Marker style for the points (default: 'o')
+    markersize: Size of the markers (default: 2)
+    alpha: Transparency of the markers (default: 0.6)
+    label: Label for the plot (default: None, will auto-generate)
+    
+    Returns:
+    positions: numpy array of shape (N, 2) containing [x, y] positions
+    ax: matplotlib axes object used for plotting
+    """
+    # Store original path for later use
+    original_bag_path = bag_path
+    bag_path = Path(bag_path)
+    
+    # Try using rosbag2_py (official ROS2 API) first
+    try:
+        from rosbag2_py import SequentialReader, StorageOptions, ConverterOptions
+        
+        # Handle both directory and direct file paths
+        if bag_path.is_dir():
+            bag_dir = bag_path
+        elif bag_path.is_file() and bag_path.suffix == '.db3':
+            bag_dir = bag_path.parent
+        else:
+            print(f"Error: '{bag_path}' is not a valid bag file or directory.")
+            return None, ax
+        
+        if not bag_dir.exists():
+            print(f"Error: Bag directory '{bag_dir}' does not exist.")
+            return None, ax
+        
+        # Set up storage options
+        storage_options = StorageOptions()
+        storage_options.uri = str(bag_dir)
+        storage_options.storage_id = 'sqlite3'
+        
+        # Set up converter options
+        converter_options = ConverterOptions()
+        converter_options.input_serialization_format = 'cdr'
+        converter_options.output_serialization_format = 'cdr'
+        
+        # Create reader
+        reader = SequentialReader()
+        reader.open(storage_options, converter_options)
+        
+        # Set topic filter
+        topic_types = reader.get_all_topics_and_types()
+        topic_to_read = None
+        for topic_metadata in topic_types:
+            if topic_metadata.name == topic_name:
+                topic_to_read = topic_metadata
+                break
+        
+        if topic_to_read is None:
+            print(f"Error: Topic '{topic_name}' not found in bag file.")
+            print(f"Available topics: {[t.name for t in topic_types]}")
+            return None, ax
+        
+        # Read messages
+        positions = []
+        reader.set_read_filter([topic_name])
+        
+        while reader.has_next():
+            (topic, data, timestamp) = reader.read_next()
+            if topic == topic_name:
+                # Deserialize message
+                from rclpy.serialization import deserialize_message
+                from rosidl_runtime_py.utilities import get_message
+                
+                PoseStamped = get_message('geometry_msgs/msg/PoseStamped')
+                msg = deserialize_message(data, PoseStamped)
+                
+                # Extract x, y from pose
+                x = msg.pose.position.x
+                y = msg.pose.position.y
+                positions.append([x, y])
+        
+        if len(positions) == 0:
+            print(f"Warning: No messages found for topic '{topic_name}'.")
+            return None, ax
+        
+        positions = np.array(positions)
+        print(f"Extracted {len(positions)} pose points from topic '{topic_name}'.")
+        
+    except ImportError:
+        # Fallback to SQLite approach if rosbag2_py is not available
+        print("rosbag2_py not available, trying SQLite approach...")
+        try:
+            from rclpy.serialization import deserialize_message
+            from rosidl_runtime_py.utilities import get_message
+            import sqlite3
+            
+            # Handle both directory and direct file paths
+            if bag_path.is_dir():
+                db3_files = list(bag_path.glob("*.db3"))
+                if len(db3_files) == 0:
+                    print(f"Error: No .db3 file found in directory '{bag_path}'.")
+                    return None, ax
+                db3_path = db3_files[0]
+            elif bag_path.is_file() and bag_path.suffix == '.db3':
+                db3_path = bag_path
+            else:
+                print(f"Error: '{bag_path}' is not a valid bag file or directory.")
+                return None, ax
+            
+            if not db3_path.exists():
+                print(f"Error: Bag file '{db3_path}' does not exist.")
+                return None, ax
+            
+            # Connect to SQLite database
+            conn = sqlite3.connect(str(db3_path))
+            cursor = conn.cursor()
+            
+            # Get message type
+            PoseStamped = get_message('geometry_msgs/msg/PoseStamped')
+            
+            # Query messages from the topic
+            cursor.execute("SELECT id FROM topics WHERE name = ?", (topic_name,))
+            topic_row = cursor.fetchone()
+            
+            if topic_row is None:
+                print(f"Error: Topic '{topic_name}' not found in bag file.")
+                conn.close()
+                return None, ax
+            
+            topic_id = topic_row[0]
+            
+            # Get all messages for this topic
+            cursor.execute("""
+                SELECT timestamp, data 
+                FROM messages 
+                WHERE topic_id = ? 
+                ORDER BY timestamp
+            """, (topic_id,))
+            
+            rows = cursor.fetchall()
+            
+            if len(rows) == 0:
+                print(f"Warning: No messages found for topic '{topic_name}'.")
+                conn.close()
+                return None, ax
+            
+            # Extract positions
+            positions = []
+            for timestamp, data in rows:
+                try:
+                    msg = deserialize_message(data, PoseStamped)
+                    x = msg.pose.position.x
+                    y = msg.pose.position.y
+                    positions.append([x, y])
+                except Exception as e:
+                    print(f"Warning: Failed to deserialize message at timestamp {timestamp}: {e}")
+                    continue
+            
+            conn.close()
+            
+            if len(positions) == 0:
+                print("Error: No valid pose messages could be extracted.")
+                return None, ax
+            
+            positions = np.array(positions)
+            print(f"Extracted {len(positions)} pose points from topic '{topic_name}'.")
+            
+        except Exception as e:
+            print(f"Error: Failed to read bag file. {e}")
+            print("Please ensure ROS2 is properly installed and sourced, or install rosbag2_py.")
+            return None, ax
+    
+    except Exception as e:
+        print(f"Error reading bag file: {e}")
+        return None, ax
+    
+    # Create figure if ax not provided
+    if ax is None:
+        fig, ax = plt.subplots()
+        ax.set_aspect('equal')
+        ax.set_xlabel('X (m)')
+        ax.set_ylabel('Y (m)')
+        ax.set_title(f'Pose trajectory from {Path(original_bag_path).name}')
+        ax.grid(True)
+    
+    # Plot points
+    if label is None:
+        label = f'Pose trajectory ({len(positions)} points)'
+    
+    ax.scatter(positions[:, 0], positions[:, 1], c=color, marker=marker,
+               s=markersize, alpha=alpha, label=label)
+    
+    print(f"Plotted {len(positions)} pose points from bag file.")
+    
+    return positions, ax
+
+
+def plot_vector_field(ax, pos_file='pos_ls.npy', control_file='control_ls.npy', 
+                      scale=1.0, color='blue', alpha=0.7, width=0.003):
+    """
+    Load position and control data from .npy files and plot a vector field.
+    
+    Parameters:
+    ax: matplotlib axes object to plot on
+    pos_file: Path to .npy file containing positions (Nx2 array with [x, y] coordinates)
+    control_file: Path to .npy file containing control actions (Nx2 array with [ux, uy] vectors)
+    scale: Scaling factor for the vectors (default: 1.0)
+    color: Color for the vectors (default: 'blue')
+    alpha: Transparency of the vectors (default: 0.7)
+    width: Width of the arrow shafts (default: 0.003)
+    """
+    # Load position data
+    try:
+        pos_ls = np.load(pos_file)
+    except FileNotFoundError:
+        print(f"Error: Position file '{pos_file}' not found.")
+        return
+    except Exception as e:
+        print(f"Error loading position file '{pos_file}': {e}")
+        return
+    
+    # Load control data
+    try:
+        control_ls = np.load(control_file)
+        control_ls = control_ls.squeeze()
+    except FileNotFoundError:
+        print(f"Error: Control file '{control_file}' not found.")
+        return
+    except Exception as e:
+        print(f"Error loading control file '{control_file}': {e}")
+        return
+    
+    # Reshape if needed (e.g., from (N, 2, 1) to (N, 2))
+    if pos_ls.ndim == 3 and pos_ls.shape[2] == 1:
+        pos_ls = pos_ls.squeeze(axis=2)
+    elif pos_ls.ndim == 3:
+        pos_ls = pos_ls.reshape(-1, 2)
+    
+    if control_ls.ndim == 3 and control_ls.shape[2] == 1:
+        control_ls = control_ls.squeeze(axis=2)
+    elif control_ls.ndim == 3:
+        control_ls = control_ls.reshape(-1, 2)
+    
+    # Check shapes
+    if pos_ls.ndim != 2 or pos_ls.shape[1] != 2:
+        print(f"Error: Position data should be Nx2 array, got shape {pos_ls.shape}")
+        return
+    
+    if control_ls.ndim != 2 or control_ls.shape[1] != 2:
+        print(f"Error: Control data should be Nx2 array, got shape {control_ls.shape}")
+        return
+    
+    # Check that lengths match
+    if len(pos_ls) != len(control_ls):
+        print(f"Warning: Position and control arrays have different lengths ({len(pos_ls)} vs {len(control_ls)}). Using minimum length.")
+        min_len = min(len(pos_ls), len(control_ls))
+        pos_ls = pos_ls[:min_len]
+        control_ls = control_ls[:min_len]
+    
+    # Extract x, y positions
+    x_pos = pos_ls[:, 0]
+    y_pos = pos_ls[:, 1]
+    
+    # Extract ux, uy control vectors
+    ux = control_ls[:, 0] * scale
+    uy = control_ls[:, 1] * scale
+    
+    # Plot vector field using quiver
+    ax.quiver(x_pos, y_pos, ux, uy, angles='xy', scale_units='xy', 
+              color=color, alpha=alpha, width=width)
+    
+    print(f"Plotted vector field with {len(pos_ls)} vectors from '{pos_file}' and '{control_file}'.")
+
+
 c_Lshape = cell(
     Barrier=[],
     exit_Vertices=[],
@@ -297,12 +577,14 @@ if __name__ == "__main__":
     ax.set_aspect('equal')
     # c_Lshape0.plot_cell(ax)
     c_Lshape.plot_cell(ax)
-    plot_m_points(ax)
+    # plot_m_points(ax)
     c0.plot_cell(ax)
     # print('xmin', c0.x_min, 'xmax', c0.x_max, 'ymin', c0.y_min, 'ymax', c0.y_max)
-    # c1.plot_cell(ax)
+    c1.plot_cell(ax)
     c2.plot_cell(ax)
     c3.plot_cell(ax)
-    plot_data_points('/home/mehdi/lidardata/cells_kernels/c0/deg90', ax)
+    # plot_pose_from_bag('test_2026-01-27-15-49-04', ax=ax, color='blue', markersize=3)
+    plot_vector_field(ax, pos_file='pos_ls.npy', control_file='control_ls.npy')
+    # plot_data_points('/home/mehdi/lidardata/cells_kernels/c0/deg90', ax)
     # plot_data_points('data_deg/deg90', ax)
     plt.show()

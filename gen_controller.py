@@ -987,7 +987,7 @@ if __name__ == '__main__':
     A = np.zeros((2,2))
     B = np.eye((2))
     measurement_mode = 'neural_lidar'
-    i_cell = 0
+    i_cell = 3
     directory_mat = 'cells_kernels/c'+str(i_cell)+'/deg'
     # directory_save =  'cells_controllers/c'+str(i_cell)+'/deg'
     if measurement_mode == 'vae':
