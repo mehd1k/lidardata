@@ -951,7 +951,7 @@ def gen_controller_all_orinetation(cell_i, directory_mat, directory_save, ch , c
     # # plt.imshow(np.sum(rate_maps_cell, axis= 0))
     # # plt.colorbar()
     # # plt.show()
-    for deg in range(0, 360, 90):
+    for deg in range(0, 360, 60):
             # A = np.zeros((2,2))
         A = np.zeros((2,2))
         # A = np.ones((2,2))*0.1

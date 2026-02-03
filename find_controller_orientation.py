@@ -67,7 +67,7 @@ class control_gain_load():
         # Normalize orientation to [0, 360) range
         orientation = orientation % 360
         
-        orientation_list_folder = list(np.arange(0, 360, 90))
+        orientation_list_folder = list(np.arange(0, 360, 60))
     
         # Find the two orientations that bracket the target orientation
         lower_degree = None

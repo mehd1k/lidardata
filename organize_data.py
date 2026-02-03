@@ -113,20 +113,16 @@ def organize_json_files(data_dir="data", output_base_dir="cells_kernels"):
     print(f"  Skipped: {skipped_count} files")
 
 
-def organize_by_orientation(data_dir="data", output_dir="data_deg"):
+def organize_by_orientation(data_dir="data", output_dir="data_deg", n_orientations=6):
     """
     Organize JSON files from data directory to data_deg based on orientation.
     
     For each JSON file:
     1. Extract orientation (in radians, range -pi to pi)
-    2. Map to nearest cardinal direction: deg0, deg90, deg180, or deg270
-    3. Copy file to data_deg/deg{0|90|180|270}/
+    2. Map to nearest of n_orientations directions (equal bins over 360°)
+    3. Copy file to data_deg/deg{target_degrees}/
     
-    Orientation mapping (radians to degrees):
-    - -pi/4 to pi/4: deg0 (pointing right/east)
-    - pi/4 to 3pi/4: deg90 (pointing up/north)
-    - 3pi/4 to -3pi/4 (wrapping): deg180 (pointing left/west)
-    - -3pi/4 to -pi/4: deg270 (pointing down/south)
+    n_orientations: number of direction bins (e.g. 4 -> 0,90,180,270; 6 -> 0,60,120,180,240,300).
     """
     data_path = Path(data_dir)
     output_path = Path(output_dir)
@@ -138,8 +134,9 @@ def organize_by_orientation(data_dir="data", output_dir="data_deg"):
     # Create output directory if it doesn't exist
     output_path.mkdir(parents=True, exist_ok=True)
     
-    # Create the four degree folders
-    for deg in [0, 90, 180, 270]:
+    bin_size = 360 / n_orientations
+    degree_bins = [int(i * bin_size) for i in range(n_orientations)]  # e.g. 4 -> [0,90,180,270]; 6 -> [0,60,120,180,240,300]
+    for deg in degree_bins:
         (output_path / f"deg{deg}").mkdir(exist_ok=True)
     
     # Get all JSON files in data directory
@@ -165,20 +162,10 @@ def organize_by_orientation(data_dir="data", output_dir="data_deg"):
             
             orientation_rad = orientation[0]
             
-            # Map orientation (in radians, -pi to pi) to nearest cardinal direction
-            # -pi/4 to pi/4: deg0 (pointing right/east)
-            # pi/4 to 3pi/4: deg90 (pointing up/north)
-            # 3pi/4 to -3pi/4 (wrapping): deg180 (pointing left/west)
-            # -3pi/4 to -pi/4: deg270 (pointing down/south)
-            
-            if -math.pi/4 <= orientation_rad <= math.pi/4:
-                target_deg = 0
-            elif math.pi/4 < orientation_rad <= 3*math.pi/4:
-                target_deg = 90
-            elif orientation_rad > 3*math.pi/4 or orientation_rad <= -3*math.pi/4:
-                target_deg = 180
-            else:  # -3*math.pi/4 < orientation_rad < -math.pi/4
-                target_deg = 270
+            # Map orientation (radians) to nearest of n_orientations bins over 360°
+            degrees = radians_to_degrees(orientation_rad)
+            bin_index = int((degrees + bin_size / 2) / bin_size) % n_orientations
+            target_deg = degree_bins[bin_index]
             
             # Create destination path: data_deg/deg{target_deg}/
             dest_dir = output_path / f"deg{target_deg}"
@@ -201,7 +188,7 @@ def organize_by_orientation(data_dir="data", output_dir="data_deg"):
 
 
 if __name__ == "__main__":
-    organize_json_files(data_dir='data')
+    organize_json_files(data_dir='lidardata_part1')
     # organize_by_orientation(data_dir="data", output_dir="data_deg")
 
 

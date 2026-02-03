@@ -21,7 +21,7 @@ for j in range(0,5):
         base_directory = bd+"//c"+str(j)  # Replace with your desired path
 
         ###Loop to create folders from deg0 to deg360
-        for i in range(0, 360, 90):
+        for i in range(0, 360, 60):
             folder_name = f"deg{i}"
             folder_path = os.path.join(base_directory, folder_name)
             
