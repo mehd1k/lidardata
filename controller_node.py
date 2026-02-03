@@ -155,7 +155,10 @@ if USE_ROS2:
             self._pose_sub = self.create_subscription(
                 PoseStamped, "/vrpn_client_node/jackal/pose", self._pose_cb, 10,
             )
-            self._control_pub = self.create_publisher(
+            self._control_linear_pub = self.create_publisher(
+                Twist, "/controller_output_linear", 10
+            )
+            self._control_unicycle_pub = self.create_publisher(
                 Twist, "/controller_output", 10
             )
             self.get_logger().info("Subscribed to /scan and /vrpn_client_node/jackal/pose")
@@ -207,10 +210,17 @@ if USE_ROS2:
             self.current_grid_occ, self.polar_params = generate_occupancy_grid_polar(self.lidar_scan)
             self.get_logger().info( "received scan", throttle_duration_sec=1.0)
             u = self.controller()
+            v, omega = self.offest_unicycle_model(u)
+            self.publish_control_unicycle_model(v, omega)
             self.get_logger().info(
                 "control : (%.3f, %.3f)" % (u[0], u[1]),
                 throttle_duration_sec=1.0,
             )
+            self.get_logger().info(
+                "vel and omeg: (%.3f, %.3f)" % (v, omega),
+                throttle_duration_sec=1.0,
+            )
+            self.linear_controller = u
             self.publish_control(u)
             self.pos_ls.append(self._position)
             self.control_ls.append(u)
@@ -218,6 +228,7 @@ if USE_ROS2:
             np.save('control_ls.npy', self.control_ls)
 
         def publish_control(self, u):
+            'publish the control synthesis  u = k*measurement + kb'
             twist_msg = Twist()
             twist_msg.linear.x = float(u[0])
             twist_msg.linear.y = float(u[1])
@@ -225,7 +236,35 @@ if USE_ROS2:
             twist_msg.angular.x = 0.0
             twist_msg.angular.y = 0.0
             twist_msg.angular.z = 0.0
-            self._control_pub.publish(twist_msg)
+            self._control_linear_pub.publish(twist_msg)
+
+        def clamp(self, x: float, lo: float, hi: float) -> float:
+            'clamp the value to the range [lo, hi]'
+            return max(lo, min(hi, x))
+
+
+        def offest_unicycle_model(self, u):
+            # Map to v, omega
+            # epsilon is the offset of the unicycle model
+            self.epsilon = 0.1
+            J_inv = np.array([
+                [np.cos(self._orientation_yaw), np.sin(self._orientation_yaw)],
+                [-np.sin(self._orientation_yaw)/self.epsilon, np.cos(self._orientation_yaw)/self.epsilon]
+            ])
+            v_omega = np.dot(J_inv, u)
+            v, omega = v_omega[0], v_omega[1]
+            v = self.clamp(v, -1, 1)
+            omega = self.clamp(omega, -1, 1)
+            return v, omega
+
+        def publish_control_unicycle_model(self, v, omega):
+            'publish the control to the unicycle model'
+            twist_msg = Twist()
+            twist_msg.linear.x = float(v)
+            twist_msg.linear.y = 0.0
+            twist_msg.angular.z = float(omega)
+            self._control_unicycle_pub.publish(twist_msg)
+         
 
         def _pose_cb(self, msg):
             self._latest_pose = msg
