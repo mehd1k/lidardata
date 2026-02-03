@@ -167,6 +167,7 @@ if USE_ROS2:
             self.control_gain_load = control_gain_load()
             self.RSC_data = load_RSC_data()
             self.current_grid_occ = None
+            self.current_cell = None
 
         def _find_cell(self, position):
             """Find which cell the robot is currently in"""
@@ -253,8 +254,8 @@ if USE_ROS2:
             ])
             v_omega = np.dot(J_inv, u)
             v, omega = v_omega[0], v_omega[1]
-            v = self.clamp(v, -1, 1)
-            omega = self.clamp(omega, -1, 1)
+            v = self.clamp(v, -2, 2)
+            omega = self.clamp(omega, -5, 5)
             return v, omega
 
         def publish_control_unicycle_model(self, v, omega):
