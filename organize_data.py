@@ -188,7 +188,7 @@ def organize_by_orientation(data_dir="data", output_dir="data_deg", n_orientatio
 
 
 if __name__ == "__main__":
-    organize_json_files(data_dir='lidardata_part2')
+    organize_json_files(data_dir='lidardata_part1')
     # organize_by_orientation(data_dir="data", output_dir="data_deg")
 
 
