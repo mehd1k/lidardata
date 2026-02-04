@@ -14,7 +14,7 @@ base_directory = 'cells_kernels'
 ####Define the base directory where you want to create the folders
 base_directory_ls = ['cells_controllers', 'cells_kernels_occupancy_grid', 'cells_kernels', 'data_deg' ]
 
-for j in range(0,5):
+for j in range(0,12):
     for bd in base_directory_ls:
 
 
