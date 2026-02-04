@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
-"""Subscribes to /scan (lidar) and /vrpn_client_node/jackal/pose (position & orientation).
-   Set USE_ROS2=True for ROS2 , False for ROS1 (e.g. robot)."""
+"""Subscribes to /scan (lidar) and /vrpn_client_node/jackal/pose (position & orientation) — ROS1."""
 
-USE_ROS2 = True  # True: ROS2 (computer), False: ROS1 (robot)
 import numpy as np
 import math
 from visualize_lidar_scan import generate_occupancy_grid, visualize_occupancy_grid_polar
@@ -10,6 +8,9 @@ from cell_config import cell, cell_ls
 from find_controller_orientation import control_gain_load
 import os
 import matplotlib.pyplot as plt
+import rospy
+from sensor_msgs.msg import LaserScan
+from geometry_msgs.msg import PoseStamped, Twist
 
 
 def quaternion_to_yaw(q):
@@ -123,7 +124,7 @@ def generate_occupancy_grid_polar(scan_data, num_angle_bins=120, num_range_bins=
     return occupancy_grid, polar_params
 
 def load_RSC_data():
-    dir = '/home/mehdi/NerualRateMaps/allocentric_ratemaps/RSC/data'
+    dir = 'allocentric_ratemaps/RSC/data'
     files = os.listdir(dir)
     output = []
     for file in files:
@@ -132,257 +133,166 @@ def load_RSC_data():
     return np.array(output)
 
 
-if USE_ROS2:
-    import rclpy
-    from rclpy.node import Node
-    from sensor_msgs.msg import LaserScan
-    from geometry_msgs.msg import PoseStamped, Twist
+class ScanPoseSubscriber(object):
+    """Subscribes to /scan and /vrpn_client_node/jackal/pose (ROS1)."""
 
-    class ScanPoseSubscriber(Node):
-        """Subscribes to /scan and /vrpn_client_node/jackal/pose (ROS2)."""
+    def __init__(self):
+        self._latest_scan = None
+        self._latest_pose = None
+        self._position = (0.0, 0.0, 0.0)
+        self._orientation_yaw = 0.0
+        self.pos_ls = []
+        self.control_ls = []
+        self._scan_sub = rospy.Subscriber(
+            "/scan", LaserScan, self._scan_cb, queue_size=10
+        )
+        self._pose_sub = rospy.Subscriber(
+            "/vrpn_client_node/jackal/pose", PoseStamped, self._pose_cb, queue_size=10
+        )
+        self._control_linear_pub = rospy.Publisher(
+            "/controller_output_linear", Twist, queue_size=10
+        )
+        self._control_unicycle_pub = rospy.Publisher(
+            "/cmd_vel", Twist, queue_size=10
+        )
+        rospy.loginfo("Subscribed to /scan and /vrpn_client_node/jackal/pose")
+        rospy.loginfo("Publishing controller output to /controller_output")
+        self.cell_ls = cell_ls
+        self.control_gain_load = control_gain_load()
+        self.RSC_data = load_RSC_data()
+        self.current_grid_occ = None
+        self.current_cell = None
 
-        def __init__(self):
-            super().__init__("scan_pose_subscriber")
-            self._latest_scan = None
-            self._latest_pose = None
-            self._position = (0.0, 0.0, 0.0)
-            self._orientation_yaw = 0.0
-            self.pos_ls = []
-            self.control_ls = []
-            self._scan_sub = self.create_subscription(
-                LaserScan, "/scan", self._scan_cb, 10,
-            )
-            self._pose_sub = self.create_subscription(
-                PoseStamped, "/vrpn_client_node/jackal/pose", self._pose_cb, 10,
-            )
-            self._control_linear_pub = self.create_publisher(
-                Twist, "/controller_output_linear", 10
-            )
-            self._control_unicycle_pub = self.create_publisher(
-                Twist, "/controller_output", 10
-            )
-            self.get_logger().info("Subscribed to /scan and /vrpn_client_node/jackal/pose")
-            self.get_logger().info("Publishing controller output to /controller_output")
-            self.cell_ls = cell_ls
-            self.control_gain_load = control_gain_load()
-            self.RSC_data = load_RSC_data()
-            self.current_grid_occ = None
-            self.current_cell = None
+    def _find_cell(self, position):
+        """Find which cell the robot is currently in"""
+        # try:
+        ls_flag = []
+        for i in range(len(self.cell_ls)):
+            ls_flag.append(self.cell_ls[i].check_in_polygon(np.reshape(position, (1, 2))))
+        
+        cell_indices = [i for i, x in enumerate(ls_flag) if x]
+        if len(cell_indices) == 0:
+            return None
+        return cell_indices[0]
 
-        def _find_cell(self, position):
-            """Find which cell the robot is currently in"""
-            # try:
-            ls_flag = []
-            for i in range(len(self.cell_ls)):
-                ls_flag.append(self.cell_ls[i].check_in_polygon(np.reshape(position, (1, 2))))
-            
-            cell_indices = [i for i, x in enumerate(ls_flag) if x]
-            if len(cell_indices) == 0:
-                return None
-            return cell_indices[0]
+    def controller(self):
+        if self.current_cell is None:
+            return np.zeros((2,1))
+        #check if the current_grid_occ exits
+        if self.current_grid_occ is None:
+            return np.zeros((2,1))
+        K, Kb = self.control_gain_load.interpolate_contorlgains(self.current_cell, self._orientation_degree)       
+        measurement = []
+        for i in range(len(self.RSC_data)):
+            measurement.append(np.sum(self.RSC_data[i]*self.current_grid_occ.T))
 
-        def controller(self):
-            if self.current_cell is None:
-                return np.zeros((2,1))
-            #check if the current_grid_occ exits
-            if self.current_grid_occ is None:
-                return np.zeros((2,1))
-            K, Kb = self.control_gain_load.interpolate_contorlgains(self.current_cell, self._orientation_degree)       
-            measurement = []
-            for i in range(len(self.RSC_data)):
-                measurement.append(np.sum(self.RSC_data[i]*self.current_grid_occ.T))
-
-            measurement = np.array(measurement)
-            measurement = measurement.reshape(-1, 1)
-            u = K[0]@measurement+Kb
-            
-            
-            # Normalize and scale
-            speed = 3.0
-            u_normalized = u / np.linalg.norm(u)
-            u_scaled = u_normalized * speed
-            return u_scaled.reshape(2,1)
-
-    
-   
-
-        def _scan_cb(self, msg):
-            self.lidar_scan = msg
-            self.current_grid_occ, self.polar_params = generate_occupancy_grid_polar(self.lidar_scan)
-            self.get_logger().info( "received scan", throttle_duration_sec=1.0)
-            u = self.controller()
-            v, omega = self.offest_unicycle_model(u)
-            self.publish_control_unicycle_model(v, omega)
-            self.get_logger().info(
-                "control : (%.3f, %.3f)" % (u[0], u[1]),
-                throttle_duration_sec=1.0,
-            )
-            self.get_logger().info(
-                "vel and omeg: (%.3f, %.3f)" % (v, omega),
-                throttle_duration_sec=1.0,
-            )
-            self.linear_controller = u
-            self.publish_control(u)
-            self.pos_ls.append(self._position)
-            self.control_ls.append(u)
-            np.save('pos_ls.npy', self.pos_ls)
-            np.save('control_ls.npy', self.control_ls)
-
-        def publish_control(self, u):
-            'publish the control synthesis  u = k*measurement + kb'
-            twist_msg = Twist()
-            twist_msg.linear.x = float(u[0])
-            twist_msg.linear.y = float(u[1])
-            twist_msg.linear.z = 0.0
-            twist_msg.angular.x = 0.0
-            twist_msg.angular.y = 0.0
-            twist_msg.angular.z = 0.0
-            self._control_linear_pub.publish(twist_msg)
-
-        def clamp(self, x: float, lo: float, hi: float) -> float:
-            'clamp the value to the range [lo, hi]'
-            return max(lo, min(hi, x))
+        measurement = np.array(measurement)
+        measurement = measurement.reshape(-1, 1)
+        u = K[0]@measurement+Kb
+        
+        
+        # Normalize and scale
+        speed = 3.0
+        u_normalized = u / np.linalg.norm(u)
+        u_scaled = u_normalized * speed
+        return u_scaled.reshape(2,1)
 
 
-        def offest_unicycle_model(self, u):
-            # Map to v, omega
-            # epsilon is the offset of the unicycle model
-            self.epsilon = 0.1
-            J_inv = np.array([
-                [np.cos(self._orientation_yaw), np.sin(self._orientation_yaw)],
-                [-np.sin(self._orientation_yaw)/self.epsilon, np.cos(self._orientation_yaw)/self.epsilon]
-            ])
-            v_omega = np.dot(J_inv, u)
-            v, omega = v_omega[0], v_omega[1]
-            v = self.clamp(v, -2, 2)
-            omega = self.clamp(omega, -5, 5)
-            return v, omega
-
-        def publish_control_unicycle_model(self, v, omega):
-            'publish the control to the unicycle model'
-            twist_msg = Twist()
-            twist_msg.linear.x = float(v)
-            twist_msg.linear.y = 0.0
-            twist_msg.angular.z = float(omega)
-            self._control_unicycle_pub.publish(twist_msg)
-         
-
-        def _pose_cb(self, msg):
-            self._latest_pose = msg
-            p = msg.pose.position
-            q = msg.pose.orientation
-            self._position = (p.x, p.y)
-            self._orientation_yaw = quaternion_to_yaw(q)
-            self._orientation_degree = self._orientation_yaw * 180 / np.pi % 360
-            self.get_logger().info(
-                "pose: x=%.3f y=%.3f yaw=%.3f rad" % (p.x, p.y, self._orientation_yaw),
-                throttle_duration_sec=1.0,
-            )
-            self.current_cell = self._find_cell(self._position)
-           
-            # Publish controller output
-            # twist_msg = Twist()
-            # twist_msg.linear.x = float(u[0])
-            # twist_msg.linear.y = float(u[1])
-            # twist_msg.linear.z = 0.0
-            # twist_msg.angular.x = 0.0
-            # twist_msg.angular.y = 0.0
-            # twist_msg.angular.z = 0.0
-            # self._control_pub.publish(twist_msg)
-            if self.current_cell is not None:
-                self.get_logger().info(
-                    "current cell: %d" % (self.current_cell),
-                    throttle_duration_sec=1.0,
-                )
-            else:
-                self.get_logger().info(
-                    "current cell: None",
-                    throttle_duration_sec=1.0,
-                )
-
-        @property
-        def latest_scan(self):
-            return self._latest_scan
-
-        @property
-        def latest_pose(self):
-            return self._latest_pose
-
-        @property
-        def position(self):
-            return self._position
-
-        @property
-        def orientation_yaw(self):
-            return self._orientation_yaw
-
-else:
-    import rospy
-    from sensor_msgs.msg import LaserScan
-    from geometry_msgs.msg import PoseStamped, Twist
-
-    class ScanPoseSubscriber:
-        """Subscribes to /scan and /vrpn_client_node/jackal/pose (ROS1)."""
-
-        def __init__(self):
-            self._latest_scan = None
-            self._latest_pose = None
-            self._position = (0.0, 0.0, 0.0)
-            self._orientation_yaw = 0.0
-
-            self._scan_sub = rospy.Subscriber("/scan", LaserScan, self._scan_cb)
-            self._pose_sub = rospy.Subscriber(
-                "/vrpn_client_node/jackal/pose", PoseStamped, self._pose_cb
-            )
-            self._control_pub = rospy.Publisher("/controller_output", Twist, queue_size=10)
-            rospy.loginfo("Subscribed to /scan and /vrpn_client_node/jackal/pose")
-            rospy.loginfo("Publishing controller output to /controller_output")
-
-        def _scan_cb(self, msg):
-            self._latest_scan = msg
-
-        def _pose_cb(self, msg):
-            self._latest_pose = msg
-            p = msg.pose.position
-            q = msg.pose.orientation
-            self._position = (p.x, p.y)
-            self._orientation_yaw = quaternion_to_yaw(q)
-            rospy.loginfo_throttle(
-                1.0, "pose: x=%.3f y=%.3f yaw=%.3f rad" % (p.x, p.y, self._orientation_yaw)
-            )
-
-        @property
-        def latest_scan(self):
-            return self._latest_scan
-
-        @property
-        def latest_pose(self):
-            return self._latest_pose
-
-        @property
-        def position(self):
-            return self._position
-
-        @property
-        def orientation_yaw(self):
-            return self._orientation_yaw
 
 
-def main(args=None):
-    if USE_ROS2:
-        rclpy.init(args=args)
-        node = ScanPoseSubscriber()
-        try:
-            rclpy.spin(node)
-        except KeyboardInterrupt:
-            pass
-        finally:
-            node.destroy_node()
-            rclpy.shutdown()
-    else:
-        rospy.init_node("scan_pose_subscriber")
-        node = ScanPoseSubscriber()
-        rospy.spin()
+    def _scan_cb(self, msg):
+        self.lidar_scan = msg
+        self.current_grid_occ, self.polar_params = generate_occupancy_grid_polar(self.lidar_scan)
+        rospy.loginfo_throttle(1.0, "received scan")
+        u = self.controller()
+        v, omega = self.offest_unicycle_model(u)
+        self.publish_control_unicycle_model(v, omega)
+        rospy.loginfo( "control : (%.3f, %.3f)" % (u[0], u[1]))
+        rospy.loginfo( "vel and omeg: (%.3f, %.3f)" % (v, omega))
+        self.linear_controller = u
+        # self.publish_control(u)
+        self.pos_ls.append(self._position)
+        self.control_ls.append(u)
+        np.save('pos_ls.npy', self.pos_ls)
+        np.save('control_ls.npy', self.control_ls)
+
+    def publish_control(self, u):
+        'publish the control synthesis  u = k*measurement + kb'
+        twist_msg = Twist()
+        twist_msg.linear.x = float(u[0])
+        twist_msg.linear.y = float(u[1])
+        twist_msg.linear.z = 0.0
+        twist_msg.angular.x = 0.0
+        twist_msg.angular.y = 0.0
+        twist_msg.angular.z = 0.0
+        self._control_linear_pub.publish(twist_msg)
+
+    def clamp(self, x: float, lo: float, hi: float) -> float:
+        'clamp the value to the range [lo, hi]'
+        return max(lo, min(hi, x))
+
+
+    def offest_unicycle_model(self, u):
+        # Map to v, omega
+        # epsilon is the offset of the unicycle model
+        self.epsilon = 0.1
+        J_inv = np.array([
+            [np.cos(self._orientation_yaw), np.sin(self._orientation_yaw)],
+            [-np.sin(self._orientation_yaw)/self.epsilon, np.cos(self._orientation_yaw)/self.epsilon]
+        ])
+        v_omega = np.dot(J_inv, u)
+        v, omega = v_omega[0], v_omega[1]
+        v = self.clamp(v, -0.5, 0.5)
+        omega = self.clamp(omega, -1, 1)
+        return v, omega
+
+    def publish_control_unicycle_model(self, v, omega):
+        'publish the control to the unicycle model'
+        twist_msg = Twist()
+        twist_msg.linear.x = float(v)
+        twist_msg.linear.y = 0.0
+        twist_msg.angular.z = float(omega)
+        self._control_unicycle_pub.publish(twist_msg)
+        
+
+    def _pose_cb(self, msg):
+        self._latest_pose = msg
+        p = msg.pose.position
+        q = msg.pose.orientation
+        self._position = (p.x, p.y)
+        self._orientation_yaw = quaternion_to_yaw(q)
+        self._orientation_degree = self._orientation_yaw * 180 / np.pi % 360
+        rospy.loginfo_throttle(1.0, "pose: x=%.3f y=%.3f yaw=%.3f rad" % (p.x, p.y, self._orientation_yaw))
+        self.current_cell = self._find_cell(self._position)
+        
+        if self.current_cell is not None:
+            rospy.loginfo_throttle(1.0, "current cell: %d" % (self.current_cell))
+        else:
+            rospy.loginfo_throttle(1.0, "current cell: None")
+
+    @property
+    def latest_scan(self):
+        return self._latest_scan
+
+    @property
+    def latest_pose(self):
+        return self._latest_pose
+
+    @property
+    def position(self):
+        return self._position
+
+    @property
+    def orientation_yaw(self):
+        return self._orientation_yaw
+
+
+
+
+def main():
+    rospy.init_node("scan_pose_subscriber", anonymous=False)
+    node = ScanPoseSubscriber()
+    rospy.spin()
 
 
 if __name__ == "__main__":
