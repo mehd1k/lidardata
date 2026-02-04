@@ -82,8 +82,8 @@ margin = 0.5
 p0 = np.array([0, 0.1])
 p1 = np.array([0, -1.3])
 p2 = np.array([2 ,-1.3])
-p3 = np.array([2, -2.8])
-p4 = np.array([3.0, -2.8])
+p3 = np.array([2, -3.6])
+p4 = np.array([3.0, -3.6])
 p5 = np.array([3.0, 0.1])
 
 # p0 = np.array([xmin1, ymax1])
@@ -100,7 +100,7 @@ m2 = 0.5*(p0+p1)
 m3 = 0.5*(p1+p2)
 m4 = 0.5*(p2+p3)
 m5 = 0.5*(p3+p4)
-m6 = 0.5*(p4+p5)
+m6 = np.array([p5[0], p2[1]])
 m7 = 0.5*(m6+p4)
 m8 = 0.5*(m6+p5)
 m9 = 0.5*(m1+p5)
@@ -108,7 +108,8 @@ m10 = 0.5*(p0+m1)
 m11 = 0.5*(m10+m3)
 m12 = 0.5*(m1+p2)
 m13 = 0.5*(m12+m8)
-m14 = 0.5*(m6+p2)
+m14 = np.array([0.5*(p2[0]+p4[0]), p2[1]])
+
 m15 = 0.5*(m4+m7)
 
 # m0 = np.array([xmin2, ymax1])
@@ -548,9 +549,9 @@ c1 = cell(
     Barrier=[
         [m1,m10],
         [m10, m11],
-        [m1, m12]
+        [m11, m12]
     ],
-    exit_Vertices=[m11, m12],
+    exit_Vertices=[m1, m12],
     vrt=[m10, m11, m12, m1]
 )
 c2 = cell(
@@ -571,21 +572,103 @@ c3 = cell(
     exit_Vertices=[m11, m2],
     vrt=[m11, m3, p1, m2]
 )
-cell_ls = [c0, c1, c2, c3]
+c4 = cell(
+    Barrier=[
+        [m13,m12],
+        [m12, m1],
+        [m1, m9]
+    ],
+    exit_Vertices=[m9, m13],
+    vrt=[m13, m12, m1, m9]
+)
+c5 = cell(  
+    Barrier=[
+        [m9,m13],
+        [m9, p5],
+        [p5, m8]
+    ],
+    exit_Vertices=[m8, m13],
+    vrt=[m9, m13, m8, p5]
+)
+
+c6 = cell(
+    Barrier=[
+        [m13,m8],
+        [m8, m6],
+        [m13, m14]
+    ],
+    exit_Vertices=[m14, m6],
+    vrt=[m6, m8, m13, m14]
+)
+c7 = cell(
+    Barrier=[
+        [m7,m6],
+        [m6, m14],
+        [m14, m15]
+    ],
+    exit_Vertices=[m7, m15],
+    vrt=[m7, m6, m14, m15]
+)
+c8 = cell(
+    Barrier=[
+        [m15,m7],
+        [m7, p4],
+        [p4, m5]
+    ],
+    exit_Vertices=[m15, m5],
+    vrt=[m15, m7, p4, m5]
+)
+c9 = cell(
+    Barrier=[
+        [m15, m5],
+        [m5, p3],
+        [p3, m4]
+    ],
+    exit_Vertices=[m15, m4],
+    vrt=[m15, m5, p3, m4]
+)
+c10 = cell(
+    Barrier=[
+        [m14,m15],
+        [m15, m4],
+        [m4, p2]
+    ],
+    exit_Vertices=[p2, m14],
+    vrt=[m14, m15, m4, p2]
+)
+c11 = cell(
+    Barrier=[
+        [p2,m14],
+        [m14, m13],
+        [m13, m12]
+    ],
+    exit_Vertices=[m12, p2],
+    vrt=[m12, m13, m14, p2]
+)
+
+cell_ls = [c0, c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11]
 if __name__ == "__main__":
     fig, ax = plt.subplots()
     ax.set_aspect('equal')
     # c_Lshape0.plot_cell(ax)
     c_Lshape.plot_cell(ax)
     # plot_m_points(ax)
-    c0.plot_cell(ax)
-    # print('xmin', c0.x_min, 'xmax', c0.x_max, 'ymin', c0.y_min, 'ymax', c0.y_max)
-    c1.plot_cell(ax)
-    c2.plot_cell(ax)
-    c3.plot_cell(ax)
+    # c0.plot_cell(ax)
+    # c1.plot_cell(ax)
+    # c2.plot_cell(ax)
+    # c3.plot_cell(ax)
+    # c4.plot_cell(ax)
+    # c5.plot_cell(ax)
+    # c6.plot_cell(ax)
+    # c7.plot_cell(ax)
+    # c8.plot_cell(ax)
+    # c9.plot_cell(ax)
+    # c10.plot_cell(ax)
+    # c11.plot_cell(ax)
     # plot_pose_from_bag('test_2026-01-27-15-49-04', ax=ax, color='blue', markersize=3)
-    plot_vector_field(ax, pos_file='pos_ls.npy', control_file='control_ls.npy')
+    # plot_vector_field(ax, pos_file='pos_ls.npy', control_file='control_ls.npy')
     # plot_data_points('/home/mehdi/lidardata/cells_kernels/c0/deg90', ax)
     # plot_data_points('data_deg/deg90', ax)
     # plot_data_points('lidardata_part1', ax)
+    # plot_data_points('lidardata_part2', ax)
     plt.show()
