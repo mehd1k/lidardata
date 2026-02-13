@@ -536,56 +536,57 @@ c_Lshape = cell(
 # )
 
 ##new cells
+delta = 0.001
 c0 = cell(
     Barrier=[
         [p0,m2],
-        [m2, m11],
-        [m10, p0]
+        [m2, m11+np.array([0, delta])],
+        [m10+np.array([0, -delta]), p0]
     ],
     exit_Vertices=[m11, m10],
     vrt=[p0, m2, m11, m10]
 )
 c1 = cell(
     Barrier=[
-        [m1,m10],
+        [m1 - np.array([0, delta]),m10],
         [m10, m11],
-        [m11, m12]
+        [m11, m12+np.array([0, delta])]
     ],
     exit_Vertices=[m1, m12],
     vrt=[m10, m11, m12, m1]
 )
 c2 = cell(
     Barrier=[
-        [m12,m11],
+        [m12,m11-np.array([0, delta])],
         [m12, p2],
-        [p2, m3]
+        [p2, m3+np.array([0, delta])]
     ],
     exit_Vertices=[m3, m11],
     vrt=[m3, m11, m12, p2]
 )
 c3 = cell(
     Barrier=[
-        [m11,m3],
+        [m11 + np.array([-delta, 0]),m3],
         [m3, p1],
-        [p1, m2]
+        [p1, m2+ np.array([delta, 0])]
     ],
     exit_Vertices=[m11, m2],
     vrt=[m11, m3, p1, m2]
 )
 c4 = cell(
     Barrier=[
-        [m13,m12],
+        [m13+ np.array([0, delta]),m12],
         [m12, m1],
-        [m1, m9]
+        [m1, m9-np.array([0, delta])]
     ],
     exit_Vertices=[m9, m13],
     vrt=[m13, m12, m1, m9]
 )
 c5 = cell(  
     Barrier=[
-        [m9,m13],
+        [m9,m13+ np.array([delta, 0])],
         [m9, p5],
-        [p5, m8]
+        [p5, m8 + np.array([-delta, 0])]
     ],
     exit_Vertices=[m8, m13],
     vrt=[m9, m13, m8, p5]
@@ -594,53 +595,54 @@ c5 = cell(
 c6 = cell(
     Barrier=[
         [m13,m8],
-        [m8, m6],
-        [m13, m14]
+        [m8, m6 + np.array([-delta, 0])],
+        [m13, m14+ np.array([delta, 0])]
     ],
     exit_Vertices=[m14, m6],
     vrt=[m6, m8, m13, m14]
 )
 c7 = cell(
     Barrier=[
-        [m7,m6],
+        [m7 + np.array([-delta, 0]),m6],
         [m6, m14],
-        [m14, m15]
+        [m14, m15+ np.array([delta, 0])]
     ],
     exit_Vertices=[m7, m15],
     vrt=[m7, m6, m14, m15]
 )
 c8 = cell(
     Barrier=[
-        [m15,m7],
+        [m15+ np.array([0, -delta]),m7],
         [m7, p4],
-        [p4, m5]
+        [p4, m5+ np.array([0, delta])]
     ],
     exit_Vertices=[m15, m5],
     vrt=[m15, m7, p4, m5]
 )
 c9 = cell(
     Barrier=[
-        [m15, m5],
+        [m15 -np.array([delta, 0]), m5],
         [m5, p3],
-        [p3, m4]
+        [p3, m4+ np.array([delta, 0])]
     ],
     exit_Vertices=[m15, m4],
     vrt=[m15, m5, p3, m4]
 )
 c10 = cell(
     Barrier=[
-        [m14,m15],
+        [m14 - np.array([delta, 0]),m15],
         [m15, m4],
-        [m4, p2]
+        [m4, p2 +np.array([delta, 0])]
     ],
     exit_Vertices=[p2, m14],
     vrt=[m14, m15, m4, p2]
 )
+
 c11 = cell(
     Barrier=[
-        [p2,m14],
+        [p2+np.array([0, delta]),m14],
         [m14, m13],
-        [m13, m12]
+        [m13, m12+np.array([0, -delta])]
     ],
     exit_Vertices=[m12, p2],
     vrt=[m12, m13, m14, p2]
@@ -669,6 +671,6 @@ if __name__ == "__main__":
     # plot_vector_field(ax, pos_file='pos_ls.npy', control_file='control_ls.npy')
     # plot_data_points('/home/mehdi/lidardata/cells_kernels/c0/deg90', ax)
     # plot_data_points('data_deg/deg90', ax)
-    plot_data_points('lidardata_part1', ax)
-    plot_data_points('lidardata_part2', ax)
+    # plot_data_points('lidardata_part1', ax)
+    # plot_data_points('lidardata_part2', ax)
     plt.show()
