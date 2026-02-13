@@ -235,7 +235,7 @@ class ScanPoseSubscriber(object):
     def offest_unicycle_model(self, u):
         # Map to v, omega
         # epsilon is the offset of the unicycle model
-        self.epsilon = 0.1
+        self.epsilon = 0.5
         J_inv = np.array([
             [np.cos(self._orientation_yaw), np.sin(self._orientation_yaw)],
             [-np.sin(self._orientation_yaw)/self.epsilon, np.cos(self._orientation_yaw)/self.epsilon]
