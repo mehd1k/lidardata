@@ -668,7 +668,7 @@ if __name__ == "__main__":
     c10.plot_cell(ax)
     c11.plot_cell(ax)
     # plot_pose_from_bag('test_2026-01-27-15-49-04', ax=ax, color='blue', markersize=3)
-    # plot_vector_field(ax, pos_file='pos_ls.npy', control_file='control_ls.npy')
+    plot_vector_field(ax, pos_file='pos_ls.npy', control_file='control_ls.npy')
     # plot_data_points('/home/mehdi/lidardata/cells_kernels/c0/deg90', ax)
     # plot_data_points('data_deg/deg90', ax)
     # plot_data_points('lidardata_part1', ax)
