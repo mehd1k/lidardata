@@ -1,0 +1,50 @@
+rosbag2_bagfile_information:
+  compression_format: ''
+  compression_mode: ''
+  custom_data: {}
+  duration:
+    nanoseconds: 43480016259
+  files:
+  - duration:
+      nanoseconds: 43480016259
+    message_count: 6139
+    path: test_2026-02-17-16-26-34.db3
+    starting_time:
+      nanoseconds_since_epoch: 1771363594744248525
+  message_count: 6139
+  relative_file_paths:
+  - test_2026-02-17-16-26-34.db3
+  ros_distro: rosbags
+  starting_time:
+    nanoseconds_since_epoch: 1771363594744248525
+  storage_identifier: sqlite3
+  topics_with_message_count:
+  - message_count: 5206
+    topic_metadata:
+      name: /vrpn_client_node/jackal/pose
+      offered_qos_profiles: ''
+      serialization_format: cdr
+      type: geometry_msgs/msg/PoseStamped
+      type_description_hash: RIHS01_10f3786d7d40fd2b54367835614bff85d4ad3b5dab62bf8bca0cc232d73b4cd8
+  - message_count: 431
+    topic_metadata:
+      name: /scan
+      offered_qos_profiles: ''
+      serialization_format: cdr
+      type: sensor_msgs/msg/LaserScan
+      type_description_hash: RIHS01_64c191398013af96509d518dac71d5164f9382553fce5c1f8cca5be7924bd828
+  - message_count: 251
+    topic_metadata:
+      name: /cmd_vel
+      offered_qos_profiles: ''
+      serialization_format: cdr
+      type: geometry_msgs/msg/Twist
+      type_description_hash: RIHS01_9c45bf16fe0983d80e3cfe750d6835843d265a9a6c46bd2e609fcddde6fb8d2a
+  - message_count: 251
+    topic_metadata:
+      name: /controller_output_linear
+      offered_qos_profiles: ''
+      serialization_format: cdr
+      type: geometry_msgs/msg/Twist
+      type_description_hash: RIHS01_9c45bf16fe0983d80e3cfe750d6835843d265a9a6c46bd2e609fcddde6fb8d2a
+  version: 8
