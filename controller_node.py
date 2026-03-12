@@ -141,8 +141,7 @@ class ScanPoseSubscriber(object):
         self._latest_pose = None
         self._position = (0.0, 0.0, 0.0)
         self._orientation_yaw = 0.0
-        self.pos_ls = []
-        self.control_ls = []
+       
         self._scan_sub = rospy.Subscriber(
             "/scan", LaserScan, self._scan_cb, queue_size=10
         )
@@ -162,7 +161,20 @@ class ScanPoseSubscriber(object):
         self.RSC_data = load_RSC_data()
         self.current_grid_occ = None
         self.current_cell = None
+        self.current_K = None
+        self.current_Kb = None
+        self.current_measurement = None
+        self.current_grid_occ = None
 
+        self._traj_capacity = 500
+        self._traj_idx = 0
+        self.pos_ls = [None] * self._traj_capacity
+        self.control_ls = [None] * self._traj_capacity
+        self.K_ls = [None] * self._traj_capacity
+        self.Kb_ls = [None] * self._traj_capacity
+        self.measurement_ls = [None] * self._traj_capacity
+        self.grid_occ_ls = [None] * self._traj_capacity
+        self.current_cell_ls = [None] * self._traj_capacity
     def _find_cell(self, position):
         """Find which cell the robot is currently in"""
         # try:
@@ -173,6 +185,8 @@ class ScanPoseSubscriber(object):
         cell_indices = [i for i, x in enumerate(ls_flag) if x]
         if len(cell_indices) == 0:
             return None
+        # if 1.5<position[0]<2.0 and -0.1 < position[1] <0.1:
+        #     return 1
         return cell_indices[0]
 
     def controller(self):
@@ -189,6 +203,10 @@ class ScanPoseSubscriber(object):
         measurement = np.array(measurement)
         measurement = measurement.reshape(-1, 1)
         u = K[0]@measurement+Kb
+
+        self.current_K = K
+        self.current_Kb = Kb
+        self.current_measurement = measurement
         
         
         # Normalize and scale
@@ -209,12 +227,37 @@ class ScanPoseSubscriber(object):
         self.publish_control_unicycle_model(v, omega)
         rospy.loginfo( "control : (%.3f, %.3f)" % (u[0], u[1]))
         rospy.loginfo( "vel and omeg: (%.3f, %.3f)" % (v, omega))
+        rospy.loginfo( "current_cell: "+str(self.current_cell))
+        rospy.loginfo("pose: x=%.3f y=%.3f yaw=%.3f deg" % (self._position[0], self._position[1], self._orientation_degree))
+        # rospy.loginfo_throttle(1.0, "pose: x=%.3f y=%.3f yaw=%.3f rad" % (p.x, p.y, self._orientation_yaw))
         self.linear_controller = u
-        # self.publish_control(u)
-        self.pos_ls.append(self._position)
-        self.control_ls.append(u)
-        np.save('pos_ls.npy', self.pos_ls)
-        np.save('control_ls.npy', self.control_ls)
+        self.publish_control(u)
+        if self._traj_idx < self._traj_capacity:
+            self.pos_ls[self._traj_idx] = self._position
+            self.control_ls[self._traj_idx] = u
+            self.K_ls[self._traj_idx] = self.current_K
+            self.Kb_ls[self._traj_idx] = self.current_Kb
+            self.current_cell_ls[self._traj_idx] = self.current_cell
+            self.measurement_ls[self._traj_idx] = self.current_measurement
+            self.grid_occ_ls[self._traj_idx] = self.current_grid_occ
+            rospy.loginfo("traj_idx: %d" % self._traj_idx)
+            self._traj_idx += 1
+
+    def save_trajectory(self):
+        """Save trajectory lists to disk (call on shutdown)."""
+        if self._traj_idx == 0:
+            rospy.loginfo("No trajectory data to save.")
+            return
+        os.makedirs('trj_data', exist_ok=True)
+        n = self._traj_idx
+        np.save('trj_data/pos_ls.npy', self.pos_ls[:n])
+        np.save('trj_data/control_ls.npy', self.control_ls[:n])
+        np.save('trj_data/K_ls.npy', self.K_ls[:n])
+        np.save('trj_data/Kb_ls.npy', self.Kb_ls[:n])
+        np.save('trj_data/measurement_ls.npy', self.measurement_ls[:n])
+        np.save('trj_data/grid_occ_ls.npy', self.grid_occ_ls[:n])
+        np.save('trj_data/current_cell_ls.npy', self.current_cell_ls[:n])
+        rospy.loginfo("Saved trajectory (%d samples) to disk." % n)
 
     def publish_control(self, u):
         'publish the control synthesis  u = k*measurement + kb'
@@ -236,6 +279,7 @@ class ScanPoseSubscriber(object):
         # Map to v, omega
         # epsilon is the offset of the unicycle model
         self.epsilon = 0.5
+        # self.epsilon = 0.1
         J_inv = np.array([
             [np.cos(self._orientation_yaw), np.sin(self._orientation_yaw)],
             [-np.sin(self._orientation_yaw)/self.epsilon, np.cos(self._orientation_yaw)/self.epsilon]
@@ -262,8 +306,9 @@ class ScanPoseSubscriber(object):
         self._position = (p.x, p.y)
         self._orientation_yaw = quaternion_to_yaw(q)
         self._orientation_degree = self._orientation_yaw * 180 / np.pi % 360
-        rospy.loginfo_throttle(1.0, "pose: x=%.3f y=%.3f yaw=%.3f rad" % (p.x, p.y, self._orientation_yaw))
+        # rospy.loginfo_throttle(1.0, "pose: x=%.3f y=%.3f yaw=%.3f rad" % (p.x, p.y, self._orientation_yaw))
         self.current_cell = self._find_cell(self._position)
+
         
         if self.current_cell is not None:
             rospy.loginfo_throttle(1.0, "current cell: %d" % (self.current_cell))
@@ -292,6 +337,7 @@ class ScanPoseSubscriber(object):
 def main():
     rospy.init_node("scan_pose_subscriber", anonymous=False)
     node = ScanPoseSubscriber()
+    rospy.on_shutdown(node.save_trajectory)
     rospy.spin()
 
 

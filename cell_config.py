@@ -86,12 +86,6 @@ p3 = np.array([1.8, -3.6])
 p4 = np.array([3.2, -3.6])
 p5 = np.array([3.2, 0.1])
 
-# p0 = np.array([xmin1, ymax1])
-# p1 = np.array([xmin1, ymin1])
-# p2 = np.array([xmin2, ymax2])
-# p3 = np.array([xmin2, ymin2])
-# p4 = np.array([xmax2, ymin2])
-# p5 = np.array([xmax1, ymax1])
 
 ### Middle points for convex regions (for 10 equal square cells)
 # m1 = 0.5*(p0+p5)
