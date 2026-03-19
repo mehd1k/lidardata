@@ -126,6 +126,7 @@ def generate_occupancy_grid_polar(scan_data, num_angle_bins=120, num_range_bins=
 def load_RSC_data():
     dir = 'allocentric_ratemaps/RSC/data'
     files = os.listdir(dir)
+    files = sorted(files)
     output = []
     for file in files:
         data = np.load(os.path.join(dir, file))
