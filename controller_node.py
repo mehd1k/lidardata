@@ -20,6 +20,11 @@ def quaternion_to_yaw(q):
     return math.atan2(siny_cosp, cosy_cosp)
 
 
+def wrap_angle_pi(angle):
+    """Wrap angle to [-pi, pi)."""
+    return (angle + np.pi) % (2.0 * np.pi) - np.pi
+
+
 def generate_occupancy_grid_polar(scan_data, num_angle_bins=120, num_range_bins=40):
     """
     Generate an occupancy grid in polar coordinates based on lidar scan data.
@@ -142,6 +147,15 @@ class ScanPoseSubscriber(object):
         self._latest_pose = None
         self._position = (0.0, 0.0, 0.0)
         self._orientation_yaw = 0.0
+        self._orientation_degree = 0.0
+        self._last_raw_position = None
+        self._last_raw_yaw = None
+        self._lp_position = None
+        self._lp_yaw = None
+        # High-pass residual thresholds used to reject sudden pose jumps.
+        self._position_hp_jump_threshold = 0.45  # meters
+        self._yaw_hp_jump_threshold = np.deg2rad(20.0)  # radians
+        self._pose_lp_alpha = 0.2
        
         self._scan_sub = rospy.Subscriber(
             "/scan", LaserScan, self._scan_cb, queue_size=10
@@ -176,6 +190,55 @@ class ScanPoseSubscriber(object):
         self.measurement_ls = [None] * self._traj_capacity
         self.grid_occ_ls = [None] * self._traj_capacity
         self.current_cell_ls = [None] * self._traj_capacity
+
+    def _filter_pose_measurement(self, raw_pos_xy, raw_yaw):
+        """
+        Reject sudden jumps using a high-pass residual and return filtered pose.
+        """
+        pos_vec = np.array(raw_pos_xy, dtype=np.float64)
+
+        if self._last_raw_position is None:
+            self._last_raw_position = pos_vec.copy()
+            self._last_raw_yaw = raw_yaw
+            self._lp_position = pos_vec.copy()
+            self._lp_yaw = raw_yaw
+            return tuple(pos_vec.tolist()), raw_yaw
+
+        alpha = self._pose_lp_alpha
+
+        # Low-pass baseline and high-pass residual for position.
+        candidate_lp_pos = (1.0 - alpha) * self._lp_position + alpha * pos_vec
+        hp_pos_residual = pos_vec - candidate_lp_pos
+        hp_pos_norm = np.linalg.norm(hp_pos_residual)
+        pos_is_jump = hp_pos_norm > self._position_hp_jump_threshold
+        if pos_is_jump:
+            filtered_pos = self._lp_position.copy()
+        else:
+            filtered_pos = pos_vec
+            self._lp_position = candidate_lp_pos
+
+        # Low-pass baseline and high-pass residual for yaw (wrapped angle space).
+        yaw_err_to_lp = wrap_angle_pi(raw_yaw - self._lp_yaw)
+        candidate_lp_yaw = wrap_angle_pi(self._lp_yaw + alpha * yaw_err_to_lp)
+        hp_yaw_residual = wrap_angle_pi(raw_yaw - candidate_lp_yaw)
+        yaw_is_jump = abs(hp_yaw_residual) > self._yaw_hp_jump_threshold
+        if yaw_is_jump:
+            filtered_yaw = self._lp_yaw
+        else:
+            filtered_yaw = raw_yaw
+            self._lp_yaw = candidate_lp_yaw
+
+        self._last_raw_position = pos_vec.copy()
+        self._last_raw_yaw = raw_yaw
+
+        if pos_is_jump or yaw_is_jump:
+            rospy.logwarn_throttle(
+                1.0,
+                "Pose jump rejected (pos_jump=%s, yaw_jump=%s, hp_pos=%.3f m, hp_yaw=%.2f deg)"
+                % (pos_is_jump, yaw_is_jump, hp_pos_norm, np.rad2deg(abs(hp_yaw_residual))),
+            )
+
+        return tuple(filtered_pos.tolist()), filtered_yaw
     def _find_cell(self, position):
         """Find which cell the robot is currently in"""
         # try:
@@ -279,7 +342,7 @@ class ScanPoseSubscriber(object):
     def offest_unicycle_model(self, u):
         # Map to v, omega
         # epsilon is the offset of the unicycle model
-        self.epsilon = 0.5
+        self.epsilon = 0.4
         # self.epsilon = 0.1
         J_inv = np.array([
             [np.cos(self._orientation_yaw), np.sin(self._orientation_yaw)],
@@ -288,7 +351,7 @@ class ScanPoseSubscriber(object):
         v_omega = np.dot(J_inv, u)
         v, omega = v_omega[0], v_omega[1]
         v = self.clamp(v, -0.5, 0.5)
-        omega = self.clamp(omega, -1, 1)
+        omega = self.clamp(omega, -1.5, 1.5)
         return v, omega
 
     def publish_control_unicycle_model(self, v, omega):
@@ -304,8 +367,9 @@ class ScanPoseSubscriber(object):
         self._latest_pose = msg
         p = msg.pose.position
         q = msg.pose.orientation
-        self._position = (p.x, p.y)
-        self._orientation_yaw = quaternion_to_yaw(q)
+        raw_position = (p.x, p.y)
+        raw_yaw = quaternion_to_yaw(q)
+        self._position, self._orientation_yaw = self._filter_pose_measurement(raw_position, raw_yaw)
         self._orientation_degree = self._orientation_yaw * 180 / np.pi % 360
         # rospy.loginfo_throttle(1.0, "pose: x=%.3f y=%.3f yaw=%.3f rad" % (p.x, p.y, self._orientation_yaw))
         self.current_cell = self._find_cell(self._position)
