@@ -453,7 +453,7 @@ class Control_cal():
         # fname = 'vec_field_mod'+str(i_cell)+'ch_'+str(self.ch)+'cv_'+str(self.cv)+'es_'+str(self.eps)+'_'+str(self.sigma_max)+'.png'
         fname = os.path.join(self.directory_save, 'vec_field.png')
         plt.show()
-        fig.savefig(fname, dpi = 300)
+        fig.savefig(fname, dpi = 500)
     
     def check_AxAH(self):
         ny = self.nx
@@ -602,8 +602,8 @@ class Control_cal():
       
     def get_K(self,cbf_lb= 0, clf_lb = 0): 
         print('wh', )
-        wh = 155
-        wv =1.21
+        wh = 10**2
+        wv =10**-1
         print('wh', wh)
         # nx,ny = self.gs[0],self.gs[1]
         
@@ -987,7 +987,7 @@ if __name__ == '__main__':
     A = np.zeros((2,2))
     B = np.eye((2))
     measurement_mode = 'neural_lidar'
-    i_cell = 11
+    i_cell = 1
     directory_mat = 'cells_kernels/c'+str(i_cell)+'/deg'
     # directory_save =  'cells_controllers/c'+str(i_cell)+'/deg'
     if measurement_mode == 'vae':
@@ -998,15 +998,8 @@ if __name__ == '__main__':
         directory_save = 'cells_controllers'
     directory_save = directory_save+'/c'+str(i_cell)+'/deg'
     print("###############################cell", str(i_cell))
-    ###The most robust
-    ### gen_controller_all_orinetation(cell_ls[i_cell], directory_mat, directory_save, ch =0.6*10**-2, cv=10**-2, eps = 6*10**-2, sigma_max = 10**-6, dt = 0.001 )
-    ### gen_controller_all_orinetation(cell_ls[i_cell], directory_mat, directory_save, ch =0.4*10**-2, cv=7*10**-3, eps = 12*10**-3, sigma_max = 10**-6, dt = 0.001 )
-    ### gen_controller_all_orinetation(cell_ls[i_cell], directory_mat, directory_save, ch =0.5*10**-2, cv=10*10**-4, eps = 1*10**-2, sigma_max = 10**-6, dt = 0.001 )
-    ### gen_controller_all_orinetation(cell_ls[i_cell], directory_mat, directory_save, ch =3.0*10**-3, cv=10**-3, eps = 10**-2, sigma_max = 10**-6, dt = 0.001 )
-    # gen_controller_all_orinetation(cell_ls[i_cell], directory_mat, directory_save, ch =5*10**-3, cv=50*10**-4, eps = 10**-2, sigma_max = 10**-6, dt = 0.001 )
-    
-    ###
-    ##neural_lidar mode
-    # gen_controller_all_orinetation(cell_ls[i_cell], directory_mat, directory_save, ch =20*10**-3, cv=5*10**-4, eps = 10**-2, sigma_max = 10**-6, dt = 0.001, measurement_mode = measurement_mode )
-    ##VAE mode
-    gen_controller_all_orinetation(cell_ls[i_cell], directory_mat, directory_save, ch =20*10**-3, cv=1*10**-4, eps = 10**-2, sigma_max = 10**-6, dt = 0.001, measurement_mode = measurement_mode )
+    ###Working parameters
+
+    ###Working parameters for cell 1 and 4
+    gen_controller_all_orinetation(cell_ls[i_cell], directory_mat, directory_save, ch =1*10**-1, cv=1*10**-4, eps = 10**-2, sigma_max = 10**-6, dt = 0.001, measurement_mode = measurement_mode )
+    # gen_controller_all_orinetation(cell_ls[i_cell], directory_mat, directory_save, ch= 5*10**5, cv=1*10**-2, eps = 10**-1, sigma_max = 10**-6, dt = 0.001, measurement_mode = measurement_mode )

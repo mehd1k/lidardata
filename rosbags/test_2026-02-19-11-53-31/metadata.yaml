@@ -1,0 +1,36 @@
+rosbag2_bagfile_information:
+  compression_format: ''
+  compression_mode: ''
+  custom_data: {}
+  duration:
+    nanoseconds: 19019973392
+  files:
+  - duration:
+      nanoseconds: 19019973392
+    message_count: 2472
+    path: test_2026-02-19-11-53-31.db3
+    starting_time:
+      nanoseconds_since_epoch: 1771520011719411186
+  message_count: 2472
+  relative_file_paths:
+  - test_2026-02-19-11-53-31.db3
+  ros_distro: rosbags
+  starting_time:
+    nanoseconds_since_epoch: 1771520011719411186
+  storage_identifier: sqlite3
+  topics_with_message_count:
+  - message_count: 2283
+    topic_metadata:
+      name: /vrpn_client_node/jackal/pose
+      offered_qos_profiles: ''
+      serialization_format: cdr
+      type: geometry_msgs/msg/PoseStamped
+      type_description_hash: RIHS01_10f3786d7d40fd2b54367835614bff85d4ad3b5dab62bf8bca0cc232d73b4cd8
+  - message_count: 189
+    topic_metadata:
+      name: /scan
+      offered_qos_profiles: ''
+      serialization_format: cdr
+      type: sensor_msgs/msg/LaserScan
+      type_description_hash: RIHS01_64c191398013af96509d518dac71d5164f9382553fce5c1f8cca5be7924bd828
+  version: 8

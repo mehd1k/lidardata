@@ -147,8 +147,7 @@ if USE_ROS2:
             self._latest_pose = None
             self._position = (0.0, 0.0, 0.0)
             self._orientation_yaw = 0.0
-            self.pos_ls = []
-            self.control_ls = []
+           
             self._scan_sub = self.create_subscription(
                 LaserScan, "/scan", self._scan_cb, 10,
             )
@@ -160,10 +159,34 @@ if USE_ROS2:
             )
             self.get_logger().info("Subscribed to /scan and /vrpn_client_node/jackal/pose")
             self.get_logger().info("Publishing controller output to /controller_output")
+            self.get_logger().info("Recording trajectory only when /controller_output_linear is received")
             self.cell_ls = cell_ls
             self.control_gain_load = control_gain_load()
             self.RSC_data = load_RSC_data()
             self.current_grid_occ = None
+            self.current_cell = None
+            self.current_K = None
+            self.current_Kb = None
+            self.current_measurement = None
+
+            self._traj_capacity = 500
+            self._traj_idx = 0
+            self.pos_ls = [None] * self._traj_capacity
+            self.control_ls = [None] * self._traj_capacity
+            self.K_ls = [None] * self._traj_capacity
+            self.Kb_ls = [None] * self._traj_capacity
+            self.measurement_ls = [None] * self._traj_capacity
+            self.grid_occ_ls = [None] * self._traj_capacity
+            # Pending trajectory sample (filled in _scan_cb, appended when /controller_output_linear is received)
+            self._pending_control = None
+            self._pending_K = None
+            self._pending_Kb = None
+            self._pending_measurement = None
+            self._pending_grid_occ = None
+
+            self._control_linear_sub = self.create_subscription(
+                Twist, "/controller_output_linear", self._controller_output_linear_cb, 10,
+            )
 
         def _find_cell(self, position):
             """Find which cell the robot is currently in"""
@@ -175,6 +198,8 @@ if USE_ROS2:
             cell_indices = [i for i, x in enumerate(ls_flag) if x]
             if len(cell_indices) == 0:
                 return None
+                
+
             return cell_indices[0]
 
         def controller(self):
@@ -191,7 +216,11 @@ if USE_ROS2:
             measurement = np.array(measurement)
             measurement = measurement.reshape(-1, 1)
             u = K[0]@measurement+Kb
-            
+
+            self.current_K = K
+            self.current_Kb = Kb
+            self.current_measurement = measurement
+            self.current_grid_occ = self.current_grid_occ
             
             # Normalize and scale
             speed = 3.0
@@ -212,10 +241,40 @@ if USE_ROS2:
                 throttle_duration_sec=1.0,
             )
             self.publish_control(u)
-            self.pos_ls.append(self._position)
-            self.control_ls.append(u)
-            np.save('pos_ls.npy', self.pos_ls)
-            np.save('control_ls.npy', self.control_ls)
+            # Store pending sample; will be appended only when /controller_output_linear is received
+            self._pending_control = u
+            self._pending_K = self.current_K
+            self._pending_Kb = self.current_Kb
+            self._pending_measurement = self.current_measurement
+            self._pending_grid_occ = self.current_grid_occ
+
+        def _controller_output_linear_cb(self, msg):
+            """Append trajectory data only when the robot actually receives a control (this topic exists)."""
+            if self._pending_control is None:
+                return
+            if self._traj_idx >= self._traj_capacity:
+                return
+            self.pos_ls[self._traj_idx] = self._position
+            self.control_ls[self._traj_idx] = self._pending_control
+            self.K_ls[self._traj_idx] = self._pending_K
+            self.Kb_ls[self._traj_idx] = self._pending_Kb
+            self.measurement_ls[self._traj_idx] = self._pending_measurement
+            self.grid_occ_ls[self._traj_idx] = self._pending_grid_occ
+            self._traj_idx += 1
+
+        def save_trajectory(self):
+            """Save trajectory lists to disk (call on shutdown)."""
+            if self._traj_idx == 0:
+                self.get_logger().info("No trajectory data to save.")
+                return
+            n = self._traj_idx
+            np.save('trj_data/pos_ls.npy', self.pos_ls[:n])
+            np.save('trj_data/control_ls.npy', self.control_ls[:n])
+            np.save('trj_data/K_ls.npy', self.K_ls[:n])
+            np.save('trj_data/Kb_ls.npy', self.Kb_ls[:n])
+            np.save('trj_data/measurement_ls.npy', self.measurement_ls[:n])
+            np.save('trj_data/grid_occ_ls.npy', self.grid_occ_ls[:n])
+            self.get_logger().info("Saved trajectory (%d samples) to disk." % n)
 
         def publish_control(self, u):
             twist_msg = Twist()
@@ -337,6 +396,7 @@ def main(args=None):
         except KeyboardInterrupt:
             pass
         finally:
+            node.save_trajectory()
             node.destroy_node()
             rclpy.shutdown()
     else:
