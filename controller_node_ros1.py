@@ -124,7 +124,7 @@ def generate_occupancy_grid_polar(scan_data, num_angle_bins=120, num_range_bins=
     return occupancy_grid, polar_params
 
 def load_RSC_data():
-    dir = '/home/mehdi/NerualRateMaps/allocentric_ratemaps/RSC/data'
+    dir = 'allocentric_ratemaps/RSC/data'
     files = os.listdir(dir)
     output = []
     for file in files:
@@ -153,7 +153,7 @@ class ScanPoseSubscriber(object):
             "/controller_output_linear", Twist, queue_size=10
         )
         self._control_unicycle_pub = rospy.Publisher(
-            "/controller_output", Twist, queue_size=10
+            "/cmd_vel", Twist, queue_size=10
         )
         rospy.loginfo("Subscribed to /scan and /vrpn_client_node/jackal/pose")
         rospy.loginfo("Publishing controller output to /controller_output")
@@ -262,8 +262,8 @@ class ScanPoseSubscriber(object):
         ])
         v_omega = np.dot(J_inv, u)
         v, omega = v_omega[0], v_omega[1]
-        v = self.clamp(v, -2, 2)
-        omega = self.clamp(omega, -5, 5)
+        v = self.clamp(v, -0.5, 0.5)
+        omega = self.clamp(omega, -1, 1)
         return v, omega
 
     def publish_control_unicycle_model(self, v, omega):

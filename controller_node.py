@@ -133,10 +133,10 @@ def load_RSC_data():
 
 
 if USE_ROS2:
-    import rclpy
-    from rclpy.node import Node
-    from sensor_msgs.msg import LaserScan
-    from geometry_msgs.msg import PoseStamped, Twist
+    # import rclpy
+    # from rclpy.node import Node
+    # from sensor_msgs.msg import LaserScan
+    # from geometry_msgs.msg import PoseStamped, Twist
 
     class ScanPoseSubscriber(Node):
         """Subscribes to /scan and /vrpn_client_node/jackal/pose (ROS2)."""
