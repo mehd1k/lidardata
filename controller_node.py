@@ -181,6 +181,14 @@ class ScanPoseSubscriber(object):
         self.current_measurement = None
         self.current_grid_occ = None
 
+        self.timer = rospy.Timer(
+        rospy.Duration(0.02),#50hz
+        self._control_loop
+        )
+
+        # added my melinda to increase publishing frequency
+        self.latest_u = np.zeros((2,1))
+
         self._traj_capacity = 500
         self._traj_idx = 0
         self.pos_ls = [None] * self._traj_capacity
@@ -279,7 +287,11 @@ class ScanPoseSubscriber(object):
         u_scaled = u_normalized * speed
         return u_scaled.reshape(2,1)
 
-
+    # new function added by melinda
+    def _control_loop(self, event):
+        u = self.latest_u
+        v, omega = self.offest_unicycle_model(u)
+        self.publish_control_unicycle_model(v, omega)
 
 
     def _scan_cb(self, msg):
@@ -287,8 +299,10 @@ class ScanPoseSubscriber(object):
         self.current_grid_occ, self.polar_params = generate_occupancy_grid_polar(self.lidar_scan)
         rospy.loginfo_throttle(1.0, "received scan")
         u = self.controller()
+         # added by melinds
+        self.latest_u = u
         v, omega = self.offest_unicycle_model(u)
-        self.publish_control_unicycle_model(v, omega)
+        # self.publish_control_unicycle_model(v, omega)
         rospy.loginfo( "control : (%.3f, %.3f)" % (u[0], u[1]))
         rospy.loginfo( "vel and omeg: (%.3f, %.3f)" % (v, omega))
         rospy.loginfo( "current_cell: "+str(self.current_cell))
