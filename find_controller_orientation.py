@@ -54,7 +54,58 @@ class control_gain_load():
 
     def interpolate_contorlgains(self, cell_number, orientation):
         """
-        Interpolate the matrix for a given orientation by loading only the two closest matrices.
+        Interpolate controller gains for a given orientation by weighting all discrete orientations.
+        
+        Args:
+            orientation (float): The orientation angle for which the matrix is to be interpolated.
+        
+        Returns:
+            np.ndarray: The interpolated matrix.
+        """
+        # Normalize orientation to [0, 360)
+        orientation = float(orientation) % 360.0
+
+        # Folder orientations are: 30, 90, 150, 210, 270, 330 (step 60)
+        base_degs = np.arange(30, 360, 60, dtype=float)
+
+        # Circular distance on a circle (degrees)
+        def circ_dist_deg(a, b):
+            d = abs(a - b) % 360.0
+            return min(d, 360.0 - d)
+
+        dists = np.array([circ_dist_deg(orientation, deg) for deg in base_degs], dtype=float)
+
+        # Exact match: return directly (avoids unnecessary file loads / numerical issues)
+        idx_exact = np.where(np.isclose(dists, 0.0))[0]
+        if idx_exact.size > 0:
+            deg_exact = int(base_degs[int(idx_exact[0])])
+            folder = os.path.join(self.dir_control_gains, 'c' + str(cell_number), f'deg{deg_exact}')
+            return self.load_matrix_from_folder(folder)
+
+        # Convert distances to weights (inverse-distance), then normalize
+        eps = 1e-6
+        weights = 1.0 / (dists + eps)
+        weights = weights / np.sum(weights)
+
+        # Weighted sum of all gains
+        K_acc = None
+        Kb_acc = None
+        for w, deg in zip(weights, base_degs):
+            folder = os.path.join(self.dir_control_gains, 'c' + str(cell_number), f'deg{int(deg)}')
+            K, Kb = self.load_matrix_from_folder(folder)
+            if K_acc is None:
+                K_acc = w * K
+                Kb_acc = w * Kb
+            else:
+                K_acc = K_acc + w * K
+                Kb_acc = Kb_acc + w * Kb
+
+        return K_acc, Kb_acc
+
+
+    def interpolate_contorlgains_old(self, cell_number, orientation):
+        """
+        Interpolate the matrix for a given orientation by loading only the two closest matrices((for 0-360 degrees)).
         
         Args:
             base_folder (str): The path to the main folder containing 'deg' subfolders.
@@ -122,6 +173,7 @@ class control_gain_load():
             
             return K_interpolated, Kb_interpolated
         
+        
 
 
 
@@ -130,14 +182,14 @@ class control_gain_load():
 
 
 
-if __name__ == '__main__':
-    # Example usage:
-    base_folder = '/path/to/robot/orientations'  # Replace with the actual path
-    orientation = 45  # Example: interpolate matrix for 45 degrees
+# if __name__ == '__main__':
+#     # Example usage:
+#     base_folder = '/path/to/robot/orientations'  # Replace with the actual path
+#     orientation = 45  # Example: interpolate matrix for 45 degrees
 
-    cl = control_gain_load()
-    folder_path = 'cells_controllers\c0\deg80'
-    K, Kb = cl.load_matrix_from_folder(folder_path)
-    print('K=', K)
-    print('Kb=', Kb)
-    # print(f"Interpolated matrix for orientation {orientation}°:\n", K,Kb)
+#     cl = control_gain_load()
+#     folder_path = 'cells_controllers\c0\deg80'
+#     K, Kb = cl.load_matrix_from_folder(folder_path)
+#     print('K=', K)
+#     print('Kb=', Kb)
+#     # print(f"Interpolated matrix for orientation {orientation}°:\n", K,Kb)

@@ -79,12 +79,20 @@ margin = 0.5
 # p5 = np.array([3.7, 1])
 
 ###Postions based on motion capture and moving the robot manually
-p0 = np.array([-0.4, 0.5])
-p1 = np.array([-0.4, -2.0])
-p2 = np.array([1.4 ,-2.0])
-p3 = np.array([1.4, -4.0])
-p4 = np.array([3.4, -4.0])
-p5 = np.array([3.4, 0.5])
+# p0 = np.array([-0.4, 0.5])
+# p1 = np.array([-0.4, -2.0])
+# p2 = np.array([1.4 ,-2.0])
+# p3 = np.array([1.4, -4.0])
+# p4 = np.array([3.4, -4.0])
+# p5 = np.array([3.4, 0.5])
+
+## updated postions after wrapping the environmentp0 = np.array([0.04, 0.35])
+p0 = np.array([0.04, 0.35])
+p1 = np.array([0.04, -1.35])
+p2 = np.array([1.6 ,-1.35])
+p3 = np.array([1.6, -3.6])
+p4 = np.array([3.4, -3.6])
+p5 = np.array([3.4, 0.35])
 
 
 ### Middle points for convex regions (for 10 equal square cells)
