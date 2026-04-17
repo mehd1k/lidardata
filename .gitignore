@@ -1,0 +1,6 @@
+# ROS bag files
+*.bag
+*.bag.active
+*.bag.orig.active
+*.orig.bag
+
