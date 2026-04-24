@@ -11,6 +11,9 @@ from find_controller_orientation import control_gain_load
 import os
 import matplotlib.pyplot as plt
 
+# added by melinda
+from nav_msgs.msg import Odometry
+# end add
 
 def quaternion_to_yaw(q):
     """Extract yaw (heading) in radians from a quaternion (x, y, z, w)."""
@@ -147,16 +150,20 @@ if USE_ROS2:
             self._latest_pose = None
             self._position = (0.0, 0.0, 0.0)
             self._orientation_yaw = 0.0
-           
+
+           # edited by melinda
             self._scan_sub = self.create_subscription(
-                LaserScan, "/scan", self._scan_cb, 10,
+                LaserScan, "/demo/scan", self._scan_cb, 10,
             )
             self._pose_sub = self.create_subscription(
-                PoseStamped, "/vrpn_client_node/jackal/pose", self._pose_cb, 10,
+                #PoseStamped, "/vrpn_client_node/jackal/pose", self._pose_cb, 10,
+               Odometry, "/demo/odom_demo", self._pose_cb, 10,
             )
+           # edited by melinda
             self._control_pub = self.create_publisher(
-                Twist, "/controller_output", 10
+                Twist, "/demo/cmd_demo", 10
             )
+           # end edit
             self.get_logger().info("Subscribed to /scan and /vrpn_client_node/jackal/pose")
             self.get_logger().info("Publishing controller output to /controller_output")
             self.get_logger().info("Recording trajectory only when /controller_output_linear is received")
@@ -286,10 +293,13 @@ if USE_ROS2:
             twist_msg.angular.z = 0.0
             self._control_pub.publish(twist_msg)
 
+       # edited by melinda
         def _pose_cb(self, msg):
             self._latest_pose = msg
-            p = msg.pose.position
-            q = msg.pose.orientation
+           # added extra pose because odometry messages wrap the pose inside another layer 
+            p = msg.pose.pose.position
+            q = msg.pose.pose.orientation
+           # 
             self._position = (p.x, p.y)
             self._orientation_yaw = quaternion_to_yaw(q)
             self._orientation_degree = self._orientation_yaw * 180 / np.pi % 360
